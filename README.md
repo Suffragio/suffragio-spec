@@ -34,3 +34,7 @@ To submit a change:
 3. Make your edits and commit them.
 4. Push the branch to your fork (`git push origin my-change`).
 5. Open a pull request against `Suffragio/suffragio-spec` on GitHub and describe what you changed and why.
+
+## 📄 License
+
+This specification and its documentation are licensed under the [GNU Free Documentation License, version 1.3 or later](LICENSE) — see the [`LICENSE`](LICENSE) file, also published on the [License](https://suffragio.github.io/suffragio-spec/license/) page of the docs site.

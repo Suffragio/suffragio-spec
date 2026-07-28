@@ -43,6 +43,11 @@ export default defineConfig({
 					translations: { pl: 'Specyfikacja API gRPC' },
 					link: '/api-reference/',
 				},
+				{
+					label: 'License',
+					translations: { pl: 'Licencja' },
+					link: '/license/',
+				},
 			],
 		}),
 	],
