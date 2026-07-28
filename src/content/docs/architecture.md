@@ -166,6 +166,8 @@ All communication between the Voter Client, the Election Registry, the Registrat
 - **Commands** are unary gRPC calls that mutate state.
 - **Events** are published on gRPC server-streaming subscriptions (and mirrored onto the public Vote Broadcast Queue / archive where relevant), so any node or auditor can subscribe and independently reconstruct the full election state.
 
+The full, implementation-ready protocol — request/response fields for every command and query, and the fields on every event — is documented on the [gRPC API Reference](/suffragio-spec/api-reference/) page, backed by the canonical `.proto` files in [`proto/suffragio/v1/`](https://github.com/Suffragio/suffragio-spec/tree/main/proto/suffragio/v1).
+
 ### Commands
 
 | Service | Command | Description |
@@ -214,6 +216,8 @@ Both networks were considered for the transport and storage layer. They are comp
 - **Freenet (Hyphanet)** is used as the **durable, censorship-resistant archive** — the published ballot templates, the append-only vote log, and the final results are also mirrored into Freenet's content-addressed datastore. Freenet is optimized for long-term, anonymous *publishing* of immutable content that must remain available even if the original publishing node goes offline, which matches the requirement for a permanent, tamper-evident audit trail.
 
 Freenet is not well suited to real-time, bidirectional RPC traffic (it is fundamentally a store-and-retrieve network, not a low-latency stream transport), and I2P does not guarantee the long-term availability of content once a publisher goes offline — hence the split: **I2P for the live protocol, Freenet for the permanent record.**
+
+Suffragio is not a single global network, either: like BitTorrent swarms coordinated by independent trackers, different organizers can run their election(s) on their own, physically separate P2P network, coordinated by their own **tracker** node (identified by its I2P domain). A voter's client discovers which network a given election lives on through the Election Catalog, then connects to that network's own Registration & Eligibility Service, Blind Signature Authority, and Vote Broadcast Queue — so one organizer's network being unreachable or compromised has no bearing on any other election.
 
 ## End-to-end voting process
 

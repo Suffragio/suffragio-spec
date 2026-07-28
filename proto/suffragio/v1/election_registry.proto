@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package suffragio.v1;
+
+import "google/protobuf/timestamp.proto";
+import "suffragio/v1/common.proto";
+
+option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
+
+// ElectionRegistry is the source of truth for immutable election
+// configuration: constituencies, ballot templates, the electoral formula,
+// and the voting window. See /architecture/#system-components.
+service ElectionRegistry {
+  // --- Commands ---
+  rpc CreateElection(CreateElectionRequest) returns (CreateElectionResponse);
+  rpc DefineBallotTemplate(DefineBallotTemplateRequest) returns (DefineBallotTemplateResponse);
+  rpc SetElectoralFormula(SetElectoralFormulaRequest) returns (SetElectoralFormulaResponse);
+  rpc ScheduleElection(ScheduleElectionRequest) returns (ScheduleElectionResponse);
+  rpc PublishElection(PublishElectionRequest) returns (PublishElectionResponse);
+
+  // --- Queries ---
+  rpc GetElection(GetElectionRequest) returns (GetElectionResponse);
+  rpc ListElections(ListElectionsRequest) returns (ListElectionsResponse);
+
+  // --- Events ---
+  // Server-streaming subscription to every event this service emits.
+  // Pass an empty election_id to subscribe to all elections.
+  rpc WatchEvents(WatchEventsRequest) returns (stream ElectionRegistryEvent);
+}
+
+// --- Commands ---
+
+message CreateElectionRequest {
+  string title = 1;
+  repeated Constituency constituencies = 2;
+}
+message CreateElectionResponse {
+  ElectionId election_id = 1;
+}
+
+message DefineBallotTemplateRequest {
+  ElectionId election_id = 1;
+  BallotTemplate template = 2;
+}
+message DefineBallotTemplateResponse {}
+
+message SetElectoralFormulaRequest {
+  ElectionId election_id = 1;
+  ElectoralFormula formula = 2;
+  // Formula-specific parameters, e.g. { "seats": "10" } for D'Hondt.
+  map<string, string> params = 3;
+}
+message SetElectoralFormulaResponse {}
+
+message ScheduleElectionRequest {
+  ElectionId election_id = 1;
+  VotingWindow voting_window = 2;
+}
+message ScheduleElectionResponse {}
+
+message PublishElectionRequest {
+  ElectionId election_id = 1;
+}
+message PublishElectionResponse {}
+
+// --- Queries ---
+
+message ElectionConfig {
+  ElectionId election_id = 1;
+  string title = 2;
+  repeated Constituency constituencies = 3;
+  repeated BallotTemplate ballot_templates = 4;
+  ElectoralFormula formula = 5;
+  VotingWindow voting_window = 6;
+  bool published = 7;
+}
+
+message GetElectionRequest {
+  ElectionId election_id = 1;
+}
+message GetElectionResponse {
+  ElectionConfig election = 1;
+}
+
+message ListElectionsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+message ListElectionsResponse {
+  repeated ElectionConfig elections = 1;
+  string next_page_token = 2;
+}
+
+// --- Events ---
+
+message WatchEventsRequest {
+  ElectionId election_id = 1;
+}
+
+message ElectionCreated {
+  ElectionId election_id = 1;
+  string title = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message BallotTemplateDefined {
+  ElectionId election_id = 1;
+  BallotTemplate template = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message ElectoralFormulaSet {
+  ElectionId election_id = 1;
+  ElectoralFormula formula = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message ElectionScheduled {
+  ElectionId election_id = 1;
+  VotingWindow voting_window = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message ElectionPublished {
+  ElectionId election_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}
+
+message ElectionRegistryEvent {
+  oneof event {
+    ElectionCreated election_created = 1;
+    BallotTemplateDefined ballot_template_defined = 2;
+    ElectoralFormulaSet electoral_formula_set = 3;
+    ElectionScheduled election_scheduled = 4;
+    ElectionPublished election_published = 5;
+  }
+}

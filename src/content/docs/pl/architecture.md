@@ -166,6 +166,8 @@ Cała komunikacja między klientem wyborcy, rejestrem wyborów, usługą rejestr
 - **Komendy** to unarne wywołania gRPC modyfikujące stan.
 - **Zdarzenia** są publikowane poprzez strumieniowe subskrypcje gRPC (server-streaming), a tam gdzie to istotne — również dublowane w publicznej kolejce nadawczej głosów / archiwum, dzięki czemu każdy węzeł lub audytor może się subskrybować i samodzielnie odtworzyć pełny stan wyborów.
 
+Pełny, gotowy do implementacji protokół — pola żądania/odpowiedzi dla każdej komendy i zapytania oraz pola każdego zdarzenia — jest dokumentowany na stronie [Specyfikacja API gRPC](/suffragio-spec/pl/api-reference/), oparty na kanonicznych plikach `.proto` w [`proto/suffragio/v1/`](https://github.com/Suffragio/suffragio-spec/tree/main/proto/suffragio/v1).
+
 ### Komendy
 
 | Usługa | Komenda | Opis |
@@ -214,6 +216,8 @@ Rozważono obie sieci pod kątem warstwy transportu i przechowywania danych. Są
 - **Freenet (Hyphanet)** jest używane jako **trwałe, odporne na cenzurę archiwum** — opublikowane szablony kart, tylko-dopisywalny dziennik głosów oraz finalne wyniki są również dublowane w adresowanym treścią magazynie Freenet. Freenet jest zoptymalizowane pod długoterminową, anonimową *publikację* niezmiennej treści, która musi pozostać dostępna nawet gdy węzeł publikujący przestanie działać — co odpowiada wymogowi trwałego, odpornego na manipulację śladu audytowego.
 
 Freenet nie nadaje się dobrze do interaktywnego, dwukierunkowego ruchu RPC (jest to zasadniczo sieć typu store-and-retrieve, a nie transport strumieniowy o niskim opóźnieniu), a I2P nie gwarantuje długoterminowej dostępności treści po odłączeniu się jej wydawcy — stąd podział: **I2P dla żywego protokołu, Freenet dla trwałego zapisu.**
+
+Suffragio nie jest też jedną globalną siecią: podobnie jak roje BitTorrent koordynowane przez niezależne trackery, różni organizatorzy mogą prowadzić swoje wybory na własnej, fizycznie odrębnej sieci P2P, koordynowanej przez własny węzeł-**tracker** (identyfikowany domeną I2P). Klient wyborcy odnajduje, w jakiej sieci znajdują się dane wybory, poprzez Katalog wyborów, a następnie łączy się z usługą rejestracji i uprawnień, urzędem ślepych podpisów oraz kolejką nadawczą głosów należącymi do tej właśnie sieci — dzięki czemu niedostępność lub skompromitowanie sieci jednego organizatora nie ma wpływu na żadne inne wybory.
 
 ## Pełny proces głosowania
 

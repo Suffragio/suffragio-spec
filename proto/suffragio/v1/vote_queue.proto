@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package suffragio.v1;
+
+import "google/protobuf/timestamp.proto";
+import "suffragio/v1/common.proto";
+
+option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
+
+// VoteBroadcastQueue is the public, append-only, replicated log where
+// every cast vote is broadcast and visible to anyone. Nothing is ever
+// removed or modified once appended. See /architecture/#system-components.
+service VoteBroadcastQueue {
+  // --- Commands ---
+  rpc SubmitVote(SubmitVoteRequest) returns (SubmitVoteResponse);
+
+  // --- Queries ---
+  // Streams every vote appended for the given election starting from
+  // after_sequence (0 = from the beginning), then keeps streaming new
+  // votes live if follow = true. This is how auditors and the Tally
+  // Engine consume the public log.
+  rpc StreamVotes(StreamVotesRequest) returns (stream SignedVote);
+
+  // --- Events ---
+  rpc WatchEvents(WatchEventsRequest) returns (stream VoteQueueEvent);
+}
+
+// --- Commands ---
+
+message SubmitVoteRequest {
+  ElectionId election_id = 1;
+  ConstituencyId constituency_id = 2;
+  // The voter's filled-in ballot.
+  bytes ballot = 3;
+  // Unblinded signature obtained from the Blind Signature Authority,
+  // proving the ballot came from an eligible, single-use token.
+  bytes signature = 4;
+}
+message SubmitVoteResponse {
+  uint64 sequence = 1;
+  // Hash the voter can keep to later independently verify inclusion in
+  // the public log without revealing which entry is theirs to anyone else.
+  bytes receipt_hash = 2;
+}
+
+// --- Queries ---
+
+message SignedVote {
+  ElectionId election_id = 1;
+  ConstituencyId constituency_id = 2;
+  bytes ballot = 3;
+  bytes signature = 4;
+  // Monotonically increasing position in the append-only queue.
+  uint64 sequence = 5;
+  google.protobuf.Timestamp received_at = 6;
+}
+
+message StreamVotesRequest {
+  ElectionId election_id = 1;
+  uint64 after_sequence = 2;
+  bool follow = 3;
+}
+
+// --- Events ---
+
+message WatchEventsRequest {
+  ElectionId election_id = 1;
+}
+
+message VoteCast {
+  ElectionId election_id = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message VoteQueueEvent {
+  oneof event {
+    VoteCast vote_cast = 1;
+  }
+}

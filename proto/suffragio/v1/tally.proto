@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package suffragio.v1;
+
+import "google/protobuf/timestamp.proto";
+import "suffragio/v1/common.proto";
+
+option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
+
+// TallyEngine is a pluggable module implementing a specific electoral
+// formula (first-past-the-post, D'Hondt, single transferable vote, ...);
+// it consumes VoteBroadcastQueue.StreamVotes after the voting window
+// closes and produces results. See /architecture/#system-components.
+service TallyEngine {
+  // --- Commands ---
+  rpc CloseVotingWindow(CloseVotingWindowRequest) returns (CloseVotingWindowResponse);
+  rpc ComputeResults(ComputeResultsRequest) returns (ComputeResultsResponse);
+  rpc PublishResults(PublishResultsRequest) returns (PublishResultsResponse);
+
+  // --- Queries ---
+  rpc GetResults(GetResultsRequest) returns (GetResultsResponse);
+
+  // --- Events ---
+  rpc WatchEvents(WatchEventsRequest) returns (stream TallyEvent);
+}
+
+// --- Commands ---
+
+message CloseVotingWindowRequest {
+  ElectionId election_id = 1;
+}
+message CloseVotingWindowResponse {}
+
+message ComputeResultsRequest {
+  ElectionId election_id = 1;
+}
+message ComputeResultsResponse {
+  ElectionResults results = 1;
+}
+
+message PublishResultsRequest {
+  ElectionId election_id = 1;
+}
+message PublishResultsResponse {}
+
+// --- Queries ---
+
+message ConstituencyResult {
+  ConstituencyId constituency_id = 1;
+  // Choice/candidate/party id -> vote or seat count, depending on formula.
+  map<string, int64> tally_by_choice = 2;
+}
+
+message ElectionResults {
+  ElectionId election_id = 1;
+  ElectoralFormula formula = 2;
+  repeated ConstituencyResult constituency_results = 3;
+  uint64 total_votes_counted = 4;
+  google.protobuf.Timestamp computed_at = 5;
+}
+
+message GetResultsRequest {
+  ElectionId election_id = 1;
+}
+message GetResultsResponse {
+  ElectionResults results = 1;
+  bool published = 2;
+}
+
+// --- Events ---
+
+message WatchEventsRequest {
+  ElectionId election_id = 1;
+}
+
+message VotingWindowClosed {
+  ElectionId election_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}
+
+message ResultsPublished {
+  ElectionId election_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}
+
+message TallyEvent {
+  oneof event {
+    VotingWindowClosed voting_window_closed = 1;
+    ResultsPublished results_published = 2;
+  }
+}

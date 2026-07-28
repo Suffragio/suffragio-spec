@@ -31,6 +31,11 @@ export default defineConfig({
 					translations: { pl: 'Architektura systemu' },
 					link: '/architecture/',
 				},
+				{
+					label: 'gRPC API Reference',
+					translations: { pl: 'Specyfikacja API gRPC' },
+					link: '/api-reference/',
+				},
 			],
 		}),
 	],

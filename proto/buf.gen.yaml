@@ -1,0 +1,26 @@
+version: v2
+# Uncomment/add the plugins matching the stack chosen for implementation.
+# Run `buf generate` from the `proto/` directory after installing the
+# corresponding protoc plugin(s). See proto/README.md for details.
+#
+# plugins:
+#   # Go + gRPC
+#   - remote: buf.build/protocolbuffers/go
+#     out: ../gen/go
+#     opt: paths=source_relative
+#   - remote: buf.build/grpc/go
+#     out: ../gen/go
+#     opt: paths=source_relative
+#
+#   # TypeScript (protobuf-es) + Connect (works over gRPC-Web too)
+#   - remote: buf.build/bufbuild/es
+#     out: ../gen/ts
+#   - remote: buf.build/connectrpc/es
+#     out: ../gen/ts
+#
+#   # Python
+#   - remote: buf.build/protocolbuffers/python
+#     out: ../gen/python
+#   - remote: buf.build/grpc/python
+#     out: ../gen/python
+plugins: []

@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package suffragio.v1;
+
+import "google/protobuf/timestamp.proto";
+import "suffragio/v1/common.proto";
+
+option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
+
+// RegistrationEligibility validates a voter's identity and constituency,
+// checks the electoral roll and any rights revocations, and issues a
+// single-use EligibilityToken. It never talks to an external identity
+// system directly -- see /architecture/#external-identity-integration-anti-corruption-layer
+// for the External Identity Adapter (anti-corruption layer) this service
+// depends on instead.
+service RegistrationEligibility {
+  // --- Commands ---
+  rpc RegisterVoterRoll(RegisterVoterRollRequest) returns (RegisterVoterRollResponse);
+  rpc VerifyIdentity(VerifyIdentityRequest) returns (VerifyIdentityResponse);
+  rpc RevokeVotingRights(RevokeVotingRightsRequest) returns (RevokeVotingRightsResponse);
+
+  // --- Queries ---
+  rpc GetVoterStatus(GetVoterStatusRequest) returns (GetVoterStatusResponse);
+
+  // --- Events ---
+  rpc WatchEvents(WatchEventsRequest) returns (stream RegistrationEligibilityEvent);
+}
+
+// --- Commands ---
+
+message VoterEntry {
+  // Opaque, pseudonymous identifier assigned by the External Identity
+  // Adapter. Never the raw national ID / PESEL / email, etc.
+  string voter_id = 1;
+  ConstituencyId constituency_id = 2;
+}
+
+message RegisterVoterRollRequest {
+  ElectionId election_id = 1;
+  repeated VoterEntry voters = 2;
+}
+message RegisterVoterRollResponse {
+  int32 registered_count = 1;
+}
+
+// Proof supplied by the voter to establish identity. The concrete
+// contents depend on which External Identity Adapter is configured for
+// the deployment (see /architecture/#external-identity-integration-anti-corruption-layer):
+// a qualified e-signature assertion, an mObywatel/eIDAS assertion, an
+// LDAP bind result, or an OIDC ID token.
+message IdentityProof {
+  // One of: "gov-registry", "mobywatel-eidas", "ldap", "oidc".
+  string adapter = 1;
+  bytes assertion = 2;
+}
+
+message VerifyIdentityRequest {
+  ElectionId election_id = 1;
+  IdentityProof proof = 2;
+}
+message VerifyIdentityResponse {
+  EligibilityToken token = 1;
+  ConstituencyId constituency_id = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RevokeVotingRightsRequest {
+  ElectionId election_id = 1;
+  string voter_id = 2;
+  string reason = 3;
+}
+message RevokeVotingRightsResponse {}
+
+// --- Queries ---
+
+message GetVoterStatusRequest {
+  ElectionId election_id = 1;
+  string voter_id = 2;
+}
+message GetVoterStatusResponse {
+  bool registered = 1;
+  bool eligible = 2;
+  bool revoked = 3;
+  ConstituencyId constituency_id = 4;
+}
+
+// --- Events ---
+
+message WatchEventsRequest {
+  ElectionId election_id = 1;
+}
+
+message VoterRegistered {
+  ElectionId election_id = 1;
+  ConstituencyId constituency_id = 2;
+  int32 count = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+// Intentionally excludes voter_id: this event is broadcast alongside the
+// public vote log, and must not let anyone correlate "who was verified"
+// with "who cast a vote" -- see /architecture/#blind-signature-ballot-issuance.
+message VoterEligibilityVerified {
+  ElectionId election_id = 1;
+  ConstituencyId constituency_id = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message VoterRightsRevoked {
+  ElectionId election_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}
+
+message RegistrationEligibilityEvent {
+  oneof event {
+    VoterRegistered voter_registered = 1;
+    VoterEligibilityVerified voter_eligibility_verified = 2;
+    VoterRightsRevoked voter_rights_revoked = 3;
+  }
+}
