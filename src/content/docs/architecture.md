@@ -40,16 +40,15 @@ flowchart LR
     end
 
     subgraph Overlay["P2P overlay network"]
-        I2P["I2P — anonymous transport"]
-        Freenet["Freenet/Hyphanet — durable archive"]
+        Freenet["Freenet — anonymous transport &amp; durable archive"]
     end
 
     Organizer -- "gRPC: CreateElection, DefineBallotTemplate, SetElectoralFormula" --> Registry
     Registrar -- "gRPC: RegisterVoterRoll, VerifyIdentity, RevokeVotingRights" --> RegSvc
     Voter -- "VerifyIdentity" --> RegSvc
-    Voter -- "RequestBlindSignature (via I2P)" --> BSA
+    Voter -- "RequestBlindSignature (via Freenet)" --> BSA
     BSA -- "checks token" --> RegSvc
-    Voter -- "SubmitVote (via I2P)" --> Queue
+    Voter -- "SubmitVote (via Freenet)" --> Queue
     Queue --> Tally
     Tally --> Registry
     Registry --> Freenet
@@ -102,8 +101,7 @@ flowchart TB
     end
 
     subgraph Overlay["P2P overlay"]
-        I2P["I2P"]
-        Freenet["Freenet/Hyphanet"]
+        Freenet["Freenet"]
     end
 
     VC --> Catalog
@@ -122,11 +120,9 @@ flowchart TB
     BSA --> RegSvc
     Queue --> Tally
     Tally --> Registry
-    Catalog -.-> I2P
-    Queue -.-> I2P
+    Catalog -.-> Freenet
     Queue -.-> Freenet
     Registry -.-> Freenet
-    Catalog -.-> Freenet
 ```
 
 ## Blind-signature ballot issuance
@@ -206,18 +202,18 @@ The full, implementation-ready protocol — request/response fields for every co
 | `ResultsPublished` | Tally Engine | Final results were computed and published. |
 | `NodeAnnounced` | Discovery | A network node announced itself to the overlay. |
 
-## P2P network layer: I2P and Freenet
+## P2P network layer: Freenet
 
 Suffragio deliberately avoids relying on a single, centrally operated server. A government (or any other single organizer) running the only endpoint would reintroduce exactly the risks the [requirements](/suffragio-spec/motivation/) aim to eliminate: a single point of failure or censorship, an entity able to correlate a voter's network origin with their identity or ballot, and a dependency on infrastructure that isn't equally open to everyone. Running the system over an anonymizing, decentralized P2P overlay instead means no single node can block access to an election, tamper with the public vote log, or deanonymize a voter by their network connection — anyone can run a node and participate on equal footing.
 
-Both networks were considered for the transport and storage layer. They are complementary rather than interchangeable, so the proposal uses **both**, each for what it is best at:
+The proposal runs entirely on **[Freenet](https://freenet.org)** — the actively developed, from-scratch Rust re-implementation of the original Freenet network (distinct from the legacy Java client sometimes still called Hyphanet). Every request is routed through Freenet's small-world peer-to-peer overlay, which hides a voter's network origin from the services they talk to — essential for ballot-casting anonymity independent of the blind-signature scheme.
 
-- **I2P** is used for the **live, interactive transport** — voters connecting to the Registration Service, the Blind Signature Authority, and the Vote Broadcast Queue over gRPC. I2P's garlic-routed streaming layer supports long-lived, bidirectional, comparatively low-latency tunnels, which is what an interactive RPC protocol like gRPC (built on HTTP/2 streams) needs. It also hides the voter's network origin from the services they talk to, which is essential for ballot-casting anonymity independent of the blind-signature scheme.
-- **Freenet (Hyphanet)** is used as the **durable, censorship-resistant archive** — the published ballot templates, the append-only vote log, and the final results are also mirrored into Freenet's content-addressed datastore. Freenet is optimized for long-term, anonymous *publishing* of immutable content that must remain available even if the original publishing node goes offline, which matches the requirement for a permanent, tamper-evident audit trail.
+Unlike the original, static-content-only Freenet, this Rust implementation is built around WebAssembly **contracts** that support both durable, content-addressed storage *and* near-real-time state updates delivered to subscribers. That single primitive covers both of Suffragio's needs on one network:
 
-Freenet is not well suited to real-time, bidirectional RPC traffic (it is fundamentally a store-and-retrieve network, not a low-latency stream transport), and I2P does not guarantee the long-term availability of content once a publisher goes offline — hence the split: **I2P for the live protocol, Freenet for the permanent record.**
+- **Live, interactive requests** — voters and organizers calling the Registration Service, the Blind Signature Authority, and the Vote Broadcast Queue are backed by contract state updates propagated to subscribers over Freenet, so no separate low-latency transport network is required.
+- **Durable, censorship-resistant archive** — the published ballot templates, the append-only vote log, and the final results are stored the same way: as Freenet contract state, replicated and content-addressed, remaining available even if the original publishing node goes offline.
 
-Suffragio is not a single global network, either: like BitTorrent swarms coordinated by independent trackers, different organizers can run their election(s) on their own, physically separate P2P network, coordinated by their own **tracker** node (identified by its I2P domain). A voter's client discovers which network a given election lives on through the Election Catalog, then connects to that network's own Registration & Eligibility Service, Blind Signature Authority, and Vote Broadcast Queue — so one organizer's network being unreachable or compromised has no bearing on any other election.
+Suffragio is not a single global network, either: like BitTorrent swarms coordinated by independent trackers, different organizers can run their election(s) on their own, physically separate P2P network, coordinated by their own **tracker** node (identified by its Freenet key). A voter's client discovers which network a given election lives on through the Election Catalog, then connects to that network's own Registration & Eligibility Service, Blind Signature Authority, and Vote Broadcast Queue — so one organizer's network being unreachable or compromised has no bearing on any other election.
 
 ## End-to-end voting process
 
@@ -240,7 +236,7 @@ flowchart TD
         B3["Voter: blind ballot, request signature"]
         B4["BSA: verify &amp; consume token, sign blindly"]
         B5["Voter: unblind signature → valid ballot"]
-        B6["Voter: mark choice, submit via I2P"]
+        B6["Voter: mark choice, submit via Freenet"]
         B7["Vote Broadcast Queue: append signed vote"]
         B0 --> B2
         B1 --> B2

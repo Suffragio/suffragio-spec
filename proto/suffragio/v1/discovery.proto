@@ -16,7 +16,7 @@ option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suf
 // coordinated by different trackers, different organizers may run their
 // election(s) on physically separate P2P networks, each coordinated by its
 // own tracker node. Every response from this service therefore identifies
-// the tracker (by its I2P domain) that produced it, or that a given
+// the tracker (by its Freenet key) that produced it, or that a given
 // election lives behind, so a client knows which network to join next.
 service Discovery {
   // --- Commands ---
@@ -35,8 +35,8 @@ service Discovery {
 // other's nodes or elections unless a tracker explicitly federates with
 // another (out of scope for this protocol version).
 message TrackerRef {
-  // .b32.i2p domain of the tracker coordinating this network.
-  string i2p_domain = 1;
+  // Freenet key (e.g. a USK) of the tracker coordinating this network.
+  string freenet_key = 1;
 }
 
 // --- Commands ---
@@ -54,12 +54,10 @@ enum NodeRole {
 message NodeInfo {
   string node_id = 1;
   repeated NodeRole roles = 2;
-  // .b32.i2p destination, if this node is reachable over I2P.
-  string i2p_address = 3;
-  // USK/CHK root key, if this node mirrors data to Freenet/Hyphanet.
-  string freenet_key = 4;
+  // This node's own Freenet key (USK/CHK), used to reach it directly.
+  string freenet_key = 3;
   // Tracker network this node announced itself on.
-  TrackerRef tracker = 5;
+  TrackerRef tracker = 4;
 }
 
 message AnnounceNodeRequest {

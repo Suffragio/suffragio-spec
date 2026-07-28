@@ -195,11 +195,11 @@ service TallyEngine {
 
 Node announcement on the P2P overlay and the public Election Catalog. `proto/suffragio/v1/discovery.proto`.
 
-Suffragio is not a single global network. Like BitTorrent swarms coordinated by different trackers, different organizers may run their election(s) on physically separate P2P networks, each coordinated by its own **tracker** node. A `TrackerRef` (just an I2P domain) identifies which network a piece of data belongs to — so **every** request/response and event below carries one, letting a client know which network a node or election actually lives on, and which network answered its query.
+Suffragio is not a single global network. Like BitTorrent swarms coordinated by different trackers, different organizers may run their election(s) on physically separate P2P networks, each coordinated by its own **tracker** node. A `TrackerRef` (just a Freenet key) identifies which network a piece of data belongs to — so **every** request/response and event below carries one, letting a client know which network a node or election actually lives on, and which network answered its query.
 
 ```proto
 message TrackerRef {
-  string i2p_domain = 1;
+  string freenet_key = 1;
 }
 
 service Discovery {
@@ -213,7 +213,7 @@ service Discovery {
 
 | RPC | Request | Response |
 | --- | --- | --- |
-| `AnnounceNode` | `node: NodeInfo` (`node_id`, `roles: NodeRole[]`, `i2p_address`, `freenet_key`, `tracker: TrackerRef`) | `tracker: TrackerRef` — confirms which network accepted the announcement |
+| `AnnounceNode` | `node: NodeInfo` (`node_id`, `roles: NodeRole[]`, `freenet_key`, `tracker: TrackerRef`) | `tracker: TrackerRef` — confirms which network accepted the announcement |
 
 `NodeRole` enumerates `ELECTION_REGISTRY`, `REGISTRATION_ELIGIBILITY`, `BLIND_SIGNATURE_AUTHORITY`, `VOTE_BROADCAST_QUEUE`, `TALLY_ENGINE`, `CATALOG_MIRROR`.
 

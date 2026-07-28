@@ -40,16 +40,15 @@ flowchart LR
     end
 
     subgraph Overlay["Sieć nakładkowa P2P"]
-        I2P["I2P — anonimowy transport"]
-        Freenet["Freenet/Hyphanet — trwałe archiwum"]
+        Freenet["Freenet — anonimowy transport i trwałe archiwum"]
     end
 
     Organizer -- "gRPC: CreateElection, DefineBallotTemplate, SetElectoralFormula" --> Registry
     Registrar -- "gRPC: RegisterVoterRoll, VerifyIdentity, RevokeVotingRights" --> RegSvc
     Voter -- "VerifyIdentity" --> RegSvc
-    Voter -- "RequestBlindSignature (przez I2P)" --> BSA
+    Voter -- "RequestBlindSignature (przez Freenet)" --> BSA
     BSA -- "sprawdza token" --> RegSvc
-    Voter -- "SubmitVote (przez I2P)" --> Queue
+    Voter -- "SubmitVote (przez Freenet)" --> Queue
     Queue --> Tally
     Tally --> Registry
     Registry --> Freenet
@@ -102,8 +101,7 @@ flowchart TB
     end
 
     subgraph Overlay["Sieć nakładkowa P2P"]
-        I2P["I2P"]
-        Freenet["Freenet/Hyphanet"]
+        Freenet["Freenet"]
     end
 
     VC --> Catalog
@@ -122,11 +120,9 @@ flowchart TB
     BSA --> RegSvc
     Queue --> Tally
     Tally --> Registry
-    Catalog -.-> I2P
-    Queue -.-> I2P
+    Catalog -.-> Freenet
     Queue -.-> Freenet
     Registry -.-> Freenet
-    Catalog -.-> Freenet
 ```
 
 ## Wydawanie kart do głosowania z użyciem ślepego podpisu
@@ -206,18 +202,18 @@ Pełny, gotowy do implementacji protokół — pola żądania/odpowiedzi dla ka�
 | `ResultsPublished` | Silnik liczenia głosów | Obliczono i opublikowano finalne wyniki. |
 | `NodeAnnounced` | Discovery | Węzeł sieci ogłosił swoją obecność. |
 
-## Warstwa sieciowa: I2P oraz Freenet
+## Warstwa sieciowa: Freenet
 
 Suffragio celowo nie opiera się na jednym, centralnie zarządzanym serwerze. Rząd (lub dowolny inny pojedynczy organizator) prowadzący jedyny punkt dostępu ponownie wprowadzałby dokładnie te zagrożenia, które [wymagania](/suffragio-spec/pl/motivation/) mają wyeliminować: pojedynczy punkt awarii lub cenzury, podmiot zdolny powiązać sieciowe pochodzenie wyborcy z jego tożsamością lub głosem, oraz zależność od infrastruktury niedostępnej na równych zasadach dla wszystkich. Uruchomienie systemu na anonimizującej, zdecentralizowanej sieci nakładkowej P2P oznacza natomiast, że żaden pojedynczy węzeł nie może zablokować dostępu do wyborów, zmanipulować publicznego dziennika głosów ani zdeanonimizować wyborcy na podstawie jego połączenia sieciowego — każdy może uruchomić węzeł i uczestniczyć na równych prawach.
 
-Rozważono obie sieci pod kątem warstwy transportu i przechowywania danych. Są one komplementarne, a nie zamienne, dlatego propozycja wykorzystuje **obie**, każdą tam, gdzie sprawdza się najlepiej:
+Propozycja działa w całości na **[Freenet](https://freenet.org)** — aktywnie rozwijanej implementacji sieci Freenet napisanej od nowa w Rust (odrębnej od starszego klienta w Javie, bywającego nazywanym Hyphanet). Każde żądanie jest kierowane przez sieć nakładkową P2P typu "small-world" Freenet, co ukrywa sieciowe pochodzenie wyborcy przed usługami, z którymi się komunikuje — co jest kluczowe dla anonimowości oddania głosu, niezależnie od schematu ślepego podpisu.
 
-- **I2P** jest używane jako **żywy, interaktywny transport** — połączenia wyborcy z usługą rejestracji, urzędem ślepych podpisów i kolejką nadawczą głosów poprzez gRPC. Warstwa strumieniowa I2P oparta na trasowaniu czosnkowym (garlic routing) obsługuje długotrwałe, dwukierunkowe tunele o stosunkowo niskim opóźnieniu, czego wymaga interaktywny protokół RPC taki jak gRPC (zbudowany na strumieniach HTTP/2). Ukrywa również pochodzenie sieciowe wyborcy przed usługami, z którymi się komunikuje, co jest kluczowe dla anonimowości oddania głosu, niezależnie od schematu ślepego podpisu.
-- **Freenet (Hyphanet)** jest używane jako **trwałe, odporne na cenzurę archiwum** — opublikowane szablony kart, tylko-dopisywalny dziennik głosów oraz finalne wyniki są również dublowane w adresowanym treścią magazynie Freenet. Freenet jest zoptymalizowane pod długoterminową, anonimową *publikację* niezmiennej treści, która musi pozostać dostępna nawet gdy węzeł publikujący przestanie działać — co odpowiada wymogowi trwałego, odpornego na manipulację śladu audytowego.
+W przeciwieństwie do oryginalnego Freenet, ograniczonego do publikacji statycznej treści, ta implementacja w Rust jest zbudowana wokół **kontraktów** WebAssembly, które wspierają zarówno trwałe, adresowane treścią przechowywanie danych, jak i aktualizacje stanu w czasie bliskim rzeczywistemu, dostarczane do subskrybentów. Ten jeden mechanizm pokrywa obie potrzeby Suffragio w ramach jednej sieci:
 
-Freenet nie nadaje się dobrze do interaktywnego, dwukierunkowego ruchu RPC (jest to zasadniczo sieć typu store-and-retrieve, a nie transport strumieniowy o niskim opóźnieniu), a I2P nie gwarantuje długoterminowej dostępności treści po odłączeniu się jej wydawcy — stąd podział: **I2P dla żywego protokołu, Freenet dla trwałego zapisu.**
+- **Żywe, interaktywne żądania** — wywołania wyborców i organizatorów do usługi rejestracji, urzędu ślepych podpisów i kolejki nadawczej głosów są realizowane poprzez aktualizacje stanu kontraktu propagowane do subskrybentów przez Freenet, więc nie jest potrzebna odrębna sieć transportowa o niskim opóźnieniu.
+- **Trwałe, odporne na cenzurę archiwum** — opublikowane szablony kart, tylko-dopisywalny dziennik głosów oraz finalne wyniki są przechowywane w ten sam sposób: jako stan kontraktu Freenet, replikowany i adresowany treścią, pozostający dostępny nawet gdy węzeł publikujący przestanie działać.
 
-Suffragio nie jest też jedną globalną siecią: podobnie jak roje BitTorrent koordynowane przez niezależne trackery, różni organizatorzy mogą prowadzić swoje wybory na własnej, fizycznie odrębnej sieci P2P, koordynowanej przez własny węzeł-**tracker** (identyfikowany domeną I2P). Klient wyborcy odnajduje, w jakiej sieci znajdują się dane wybory, poprzez Katalog wyborów, a następnie łączy się z usługą rejestracji i uprawnień, urzędem ślepych podpisów oraz kolejką nadawczą głosów należącymi do tej właśnie sieci — dzięki czemu niedostępność lub skompromitowanie sieci jednego organizatora nie ma wpływu na żadne inne wybory.
+Suffragio nie jest też jedną globalną siecią: podobnie jak roje BitTorrent koordynowane przez niezależne trackery, różni organizatorzy mogą prowadzić swoje wybory na własnej, fizycznie odrębnej sieci P2P, koordynowanej przez własny węzeł-**tracker** (identyfikowany kluczem Freenet). Klient wyborcy odnajduje, w jakiej sieci znajdują się dane wybory, poprzez Katalog wyborów, a następnie łączy się z usługą rejestracji i uprawnień, urzędem ślepych podpisów oraz kolejką nadawczą głosów należącymi do tej właśnie sieci — dzięki czemu niedostępność lub skompromitowanie sieci jednego organizatora nie ma wpływu na żadne inne wybory.
 
 ## Pełny proces głosowania
 
@@ -240,7 +236,7 @@ flowchart TD
         B3["Wyborca: zaślepia kartę, żąda podpisu"]
         B4["BSA: weryfikuje i konsumuje token, podpisuje ślepo"]
         B5["Wyborca: odślepia podpis → ważna karta"]
-        B6["Wyborca: zaznacza wybór, wysyła przez I2P"]
+        B6["Wyborca: zaznacza wybór, wysyła przez Freenet"]
         B7["Kolejka nadawcza głosów: dopisuje podpisany głos"]
         B0 --> B2
         B1 --> B2

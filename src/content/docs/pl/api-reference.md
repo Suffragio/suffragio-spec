@@ -195,11 +195,11 @@ service TallyEngine {
 
 Ogłaszanie węzłów w sieci nakładkowej P2P oraz publiczny Katalog wyborów. `proto/suffragio/v1/discovery.proto`.
 
-Suffragio nie jest jedną globalną siecią. Podobnie jak roje BitTorrent koordynowane przez różne trackery, różni organizatorzy mogą prowadzić swoje wybory na fizycznie odrębnych sieciach P2P, każda koordynowana przez własny węzeł-**tracker**. `TrackerRef` (po prostu domena I2P) identyfikuje, do jakiej sieci należą dane — dlatego **każde** żądanie/odpowiedź i zdarzenie poniżej niesie ten identyfikator, dzięki czemu klient wie, w jakiej sieci faktycznie znajduje się węzeł lub wybory oraz która sieć odpowiedziała na jego zapytanie.
+Suffragio nie jest jedną globalną siecią. Podobnie jak roje BitTorrent koordynowane przez różne trackery, różni organizatorzy mogą prowadzić swoje wybory na fizycznie odrębnych sieciach P2P, każda koordynowana przez własny węzeł-**tracker**. `TrackerRef` (po prostu klucz Freenet) identyfikuje, do jakiej sieci należą dane — dlatego **każde** żądanie/odpowiedź i zdarzenie poniżej niesie ten identyfikator, dzięki czemu klient wie, w jakiej sieci faktycznie znajduje się węzeł lub wybory oraz która sieć odpowiedziała na jego zapytanie.
 
 ```proto
 message TrackerRef {
-  string i2p_domain = 1;
+  string freenet_key = 1;
 }
 
 service Discovery {
@@ -213,7 +213,7 @@ service Discovery {
 
 | RPC | Żądanie | Odpowiedź |
 | --- | --- | --- |
-| `AnnounceNode` | `node: NodeInfo` (`node_id`, `roles: NodeRole[]`, `i2p_address`, `freenet_key`, `tracker: TrackerRef`) | `tracker: TrackerRef` — potwierdza, która sieć przyjęła ogłoszenie |
+| `AnnounceNode` | `node: NodeInfo` (`node_id`, `roles: NodeRole[]`, `freenet_key`, `tracker: TrackerRef`) | `tracker: TrackerRef` — potwierdza, która sieć przyjęła ogłoszenie |
 
 `NodeRole` wylicza: `ELECTION_REGISTRY`, `REGISTRATION_ELIGIBILITY`, `BLIND_SIGNATURE_AUTHORITY`, `VOTE_BROADCAST_QUEUE`, `TALLY_ENGINE`, `CATALOG_MIRROR`.
 
