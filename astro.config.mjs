@@ -3,15 +3,18 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
 
+const base = '/suffragio-spec';
+
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://suffragio.github.io',
-	base: '/suffragio-spec',
+	base,
 	integrations: [
 		mermaid(),
 		starlight({
 			title: 'My Docs',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/withastro/starlight' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/Suffragio/suffragio-spec' }],
+			head: [{ tag: 'script', attrs: { src: `${base}/mermaid-zoom.js`, defer: true } }],
 			defaultLocale: 'root',
 			locales: {
 				root: { label: 'English', lang: 'en' },
@@ -27,19 +30,6 @@ export default defineConfig({
 					label: 'System Architecture',
 					translations: { pl: 'Architektura systemu' },
 					link: '/architecture/',
-				},
-				{
-					label: 'Guides',
-					translations: { pl: 'Przewodniki' },
-					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Example Guide', slug: 'guides/example' },
-					],
-				},
-				{
-					label: 'Reference',
-					translations: { pl: 'Referencje' },
-					items: [{ autogenerate: { directory: 'reference' } }],
 				},
 			],
 		}),

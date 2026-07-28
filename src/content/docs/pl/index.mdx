@@ -1,0 +1,25 @@
+---
+title: Suffragio
+description: Dokumentacja Suffragio — propozycji nowoczesnego, otwartego i weryfikowalnego systemu wyborczego.
+template: splash
+hero:
+  tagline: Dokumentacja Suffragio — propozycji nowoczesnego, otwartego i weryfikowalnego systemu wyborczego.
+  image:
+    file: ../../../assets/houston.webp
+  actions:
+    - text: Motywacja i wymagania
+      link: /suffragio-spec/pl/motivation/
+      icon: right-arrow
+    - text: Architektura systemu
+      link: /suffragio-spec/pl/architecture/
+      icon: right-arrow
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## Poznaj specyfikację
+
+<CardGrid stagger>
+	<LinkCard title="Motywacja i wymagania" href="/suffragio-spec/pl/motivation/" description="Dlaczego powstało Suffragio oraz jakie wymagania kształtowały jego projekt." />
+	<LinkCard title="Architektura systemu" href="/suffragio-spec/pl/architecture/" description="Aktorzy, komponenty, warstwa sieciowa, komendy, zdarzenia i pełny proces głosowania." />
+</CardGrid>
