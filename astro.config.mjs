@@ -4,6 +4,8 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
+	site: 'https://suffragio.github.io',
+	base: '/suffragio-spec',
 	integrations: [
 		starlight({
 			title: 'My Docs',
