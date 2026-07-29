@@ -1,0 +1,13 @@
+/*
+ * The starlight-theme-md3 theme sets `overflow: hidden` directly on
+ * `<table>` elements with no scrollable wrapper, which clips wide tables
+ * instead of letting the user scroll them horizontally. Override this so
+ * wide tables (e.g. the market-research comparison matrix) can be scrolled.
+ */
+.sl-markdown-content table:not(:where(.not-content *)) {
+	display: block;
+	overflow-x: auto;
+	overflow-y: hidden;
+	width: 100%;
+	max-width: 100%;
+}
