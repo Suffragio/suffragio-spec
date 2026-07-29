@@ -78,6 +78,11 @@ export default defineConfig({
 							translations: { pl: 'Macierz porównawcza' },
 							link: '/market-research/matrix/',
 						},
+						{
+							label: 'Verdict',
+							translations: { pl: 'Werdykt' },
+							link: '/market-research/verdict/',
+						},
 					],
 				},
 			],
