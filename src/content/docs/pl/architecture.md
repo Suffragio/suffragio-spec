@@ -3,7 +3,9 @@ title: Architektura systemu
 description: Proponowana architektura systemu wyborczego Suffragio — aktorzy, komponenty, warstwa sieciowa, komendy, zdarzenia i pełny proces głosowania.
 ---
 
-Ta strona proponuje architekturę systemu spełniającą cele i wymagania opisane na stronie [Motywacja i wymagania](/suffragio-spec/pl/motivation/). Jest to pierwszy szkic projektu, stanowiący podstawę do dalszej dyskusji i doprecyzowania.
+Ta strona opisuje architekturę systemu spełniającą cele z [Motywacja i wymagania](/suffragio-spec/pl/motivation/).
+
+**Normatywne reguły protokołu dla implementatorów** (kryptografia, karty, Lua, auth, maszyna stanów, Freenet, pakiet audytowy): [Protokół v1](/suffragio-spec/pl/protocol-v1/). Kształt API: [Specyfikacja API gRPC](/suffragio-spec/pl/api-reference/) oraz `proto/suffragio/v1/`. Przy sprzeczności **wygrywa Protokół v1**.
 
 ## Aktorzy
 
@@ -16,11 +18,12 @@ Ta strona proponuje architekturę systemu spełniającą cele i wymagania opisan
 
 **Aktorzy systemowi (usługi / węzły)**
 
-- **Urząd ślepych podpisów (Blind Signature Authority, BSA)** — weryfikuje token uprawniający wyborcę i ślepo podpisuje jego kartę, nigdy nie widząc jej treści.
-- **Kolejka nadawcza głosów (Vote Broadcast Queue)** — publiczny, tylko-dopisywalny, replikowany dziennik, w którym każdy oddany głos jest rozgłaszany i widoczny dla każdego.
-- **Silnik liczenia głosów (Tally Engine)** — wymienialny komponent stosujący skonfigurowaną ordynację wyborczą do dziennika głosów po zamknięciu okna głosowania.
-- **Katalog wyborów (Election Catalog)** — publiczny, przeglądalny katalog nadchodzących, trwających i zakończonych wyborów, zbierany od wszystkich organizatorów w sieci.
-- **Operator węzła sieciowego** — każdy, kto uruchamia węzeł Suffragio, uczestnicząc w wykrywaniu, rozgłaszaniu i archiwizacji danych wyborczych.
+- **Urząd ślepych podpisów (BSA)** — zużywa token u RegSvc i ślepo podpisuje **całą** wypełnioną kartę; bez tożsamości wyborcy i bez odślepionej treści.
+- **Kolejka nadawcza głosów** — publiczny log multi-writer z łańcuchem haszy (eventual consistency).
+- **Silnik liczenia (Tally Engine)** — skrypt **Lua** + oficjalny pakiet wyników z podpisami m-of-n.
+- **Katalog formuł (Formula Catalog)** — publikacja i odkrywanie skryptów Lua (wybory pinują `content_hash`).
+- **Katalog wyborów (Discovery)** — przeglądarka elekcji i ról węzłów.
+- **Operator węzła** — każdy uruchamiający węzeł Suffragio.
 
 ```mermaid
 flowchart LR

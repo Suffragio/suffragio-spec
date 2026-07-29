@@ -21,22 +21,22 @@ Pierwszy rozdział zapewniają **podpisy ślepe** (*blind signatures*), schemat 
 
 W zwykłym podpisie cyfrowym podpisujący czyta wiadomość, podpisuje ją, a sam podpis potwierdza zarówno autora, jak i treść. W podpisie ślepym podpisujący weryfikuje jedynie *zamazany* token i wystawia podpis na tej zamazanej wartości. Odbiorca może później usunąć czynnik zamazujący i uzyskać podpis na prawdziwej wiadomości — podpisujący natomiast nigdy jej nie widzi.
 
-W Suffragio wygląda to następująco:
+W Suffragio wygląda to następująco (szczegóły normatywne: [Protokół v1](/suffragio-spec/pl/protocol-v1/)):
 
-1. Wyborca uwierzytelnia się w **Registration & Eligibility Service** i otrzymuje jednorazowy `EligibilityToken`. Ten krok jest powiązany z tożsamością: usługa zapisuje, że token został wydany konkretnemu uprawnionemu wyborcy w konkretnym okręgu.
-2. Lokalny klient wyborcy generuje nowy identyfikator karty wyborczej i zamazuje go losową wartością znaną tylko klientowi.
-3. Klient wysyła zamazany identyfikator razem z `EligibilityToken` do **Blind Signature Authority** (BSA).
-4. BSA sprawdza, czy token jest ważny i nieużywany, zużywa go i podpisuje zamazany identyfikator. Ponieważ identyfikator jest zamazany, BSA nie widzi treści karty wyborczej ani nie jest w stanie później rozpoznać, która karta odpowiada temu podpisowi.
-5. Klient lokalnie usuwa czynnik zamazujący. Efektem jest ważny podpis BSA na prawdziwym identyfikatorze karty, przy czym samo BSA nie posiada zapisu tego prawdziwego identyfikatora.
+1. Wyborca uwierzytelnia się w **RegSvc** i dostaje losowy jednorazowy `EligibilityToken` (stan tokenu tylko po stronie RegSvc).
+2. Wyborca **wypełnia całą kartę**; klient koduje ją jako deterministyczny CBOR i zaślepia suite-specific encoding **tych pełnych bajtów** (domyślnie `BLIND_SIG_RSA_FDH_3072_SHA256`).
+3. Przez **Freenet** klient wysyła zaślepioną wartość z tokenem do **BSA**.
+4. BSA **atomowo zużywa** token przez RegSvc (odpowiedź **bez** `voter_id`) i podpisuje zaślepioną wartość — bez odślepionej karty i bez tożsamości.
+5. Klient odślepia lokalnie → podpis BSA na **całej** wypełnionej karcie.
 
-Wyborca dysponuje teraz poświadczeniem, które dowodzi *„BSA poświadczył jeden głos jednego uprawnionego wyborcy”*, nie ujawniając przy tym ani wyborcy, ani karty.
+Wyborca ma dowód, że *„BSA autoryzował dokładnie tę treść karty raz”*, bez ujawnienia BSA kim jest i jak głosował.
 
 ## Rozdzielenie procesowe i czasowe
 
 Nawet przy podpisach ślepych obserwator widzący jednocześnie żądanie podpisu i oddany głos mógłby próbować je skorelować po czasie. Suffragio utrudnia to poprzez projekt:
 
 - Wyborca może poprosić o podpis ślepy w dowolnym momencie okna wyborczego, niekoniecznie tuż przed oddaniem głosu.
-- Żądanie może być trasowane przez anonimizującą sieć (patrz niżej), więc BSA widzi jedynie pochodzenie z Freenet, a nie adres IP ani sesję dostawcy tożsamości.
+- W wyborach publicznych **zarówno** ślepy podpis, jak i submit głosu **MUSZĄ** iść Freenetem, żeby BSA i Queue nie łączyły się bezpośrednio z sesją weryfikacji tożsamości.
 - `EligibilityToken` jest zużywany w momencie podpisywania, więc ta sama tożsamość nie może poprosić o drugi podpis. Dzięki temu na każdego uprawnionego wyborcę przypada dokładnie jedna podpisana karta, ale BSA nie wie, którą.
 
 ## Anonimowy transport — Freenet
@@ -51,13 +51,9 @@ Oznacza to, że nawet jeśli atakujący kontroluje część węzłów, skorelowa
 
 ## Publiczna urna jest anonimowa
 
-Po wypełnieniu karty wyborca przesyła gotowy głos do **Vote Broadcast Queue**. Kolejka jest publiczna i przyrostowa: każdy może pobrać wszystkie oddane głosy i samodzielnie zweryfikować podpisy oraz końcowy wynik. Zawiera ona jednak tylko:
+Gotowa karta idzie do **Vote Broadcast Queue** przez Freenet. Log jest publiczny, multi-writer, z łańcuchem haszy i eventual consistency. Wpisy: CBOR karty, podpis, hashe łańcucha — **bez** `voter_id` i (domyślnie w wyborach publicznych) bez precyzyjnego publicznego `received_at`.
 
-- podpisany identyfikator karty,
-- dokonane przez wyborcę wybory,
-- kryptograficzny dowód, że kartę podpisało BSA.
-
-Nie ma tam identyfikatora wyborcy, ciasteczka sesji, adresu IP ani znacznika czasu powiązanego z rzeczywistą tożsamością. Podpis dowodzi uprawnienia do głosu; treść karty pozostaje anonimowa.
+**Nie ma** `receipt_hash` jako dowodu dla osób trzecich. Wyborca może trzymać lokalną kopię karty i później znaleźć identyczny wpis w oficjalnym logu.
 
 ## Co widzi, a czego nie widzi każdy z aktorów
 

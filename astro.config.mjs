@@ -50,6 +50,11 @@ export default defineConfig({
 					link: '/architecture/',
 				},
 				{
+					label: 'Protocol v1 (normative)',
+					translations: { pl: 'Protokół v1 (normatywny)' },
+					link: '/protocol-v1/',
+				},
+				{
 					label: 'gRPC API Reference',
 					translations: { pl: 'Specyfikacja API gRPC' },
 					link: '/api-reference/',

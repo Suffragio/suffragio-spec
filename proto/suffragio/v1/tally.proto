@@ -7,32 +7,32 @@ import "suffragio/v1/common.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// TallyEngine is a pluggable module implementing a specific electoral
-// formula (first-past-the-post, D'Hondt, single transferable vote, ...);
-// it consumes VoteBroadcastQueue.StreamVotes after the voting window
-// closes and produces results. See /architecture/#system-components.
+// TallyEngine runs the election-pinned Lua script and publishes the official
+// signed results package. Official close time = authorized CloseVotingWindow,
+// not peer NTP. See protocol-v1.md.
 service TallyEngine {
-  // --- Commands ---
   rpc CloseVotingWindow(CloseVotingWindowRequest) returns (CloseVotingWindowResponse);
   rpc ComputeResults(ComputeResultsRequest) returns (ComputeResultsResponse);
   rpc PublishResults(PublishResultsRequest) returns (PublishResultsResponse);
 
-  // --- Queries ---
   rpc GetResults(GetResultsRequest) returns (GetResultsResponse);
+  rpc GetOfficialResultsPackage(GetOfficialResultsPackageRequest) returns (GetOfficialResultsPackageResponse);
+  rpc GetTallySnapshot(GetTallySnapshotRequest) returns (GetTallySnapshotResponse);
 
-  // --- Events ---
   rpc WatchEvents(WatchEventsRequest) returns (stream TallyEvent);
 }
 
-// --- Commands ---
-
 message CloseVotingWindowRequest {
   ElectionId election_id = 1;
+  // Detached signatures from commission keys authorizing close (m-of-n policy).
+  repeated bytes authorizing_signatures = 2;
 }
 message CloseVotingWindowResponse {}
 
 message ComputeResultsRequest {
   ElectionId election_id = 1;
+  // Log head the computation is based on (must match package later).
+  bytes log_head_hash = 2;
 }
 message ComputeResultsResponse {
   ElectionResults results = 1;
@@ -40,23 +40,41 @@ message ComputeResultsResponse {
 
 message PublishResultsRequest {
   ElectionId election_id = 1;
+  OfficialResultsPackage package = 2;
 }
 message PublishResultsResponse {}
 
-// --- Queries ---
-
 message ConstituencyResult {
   ConstituencyId constituency_id = 1;
-  // Choice/candidate/party id -> vote or seat count, depending on formula.
+  // Keys = stable DSL ids only.
   map<string, int64> tally_by_choice = 2;
 }
 
 message ElectionResults {
   ElectionId election_id = 1;
-  ElectoralFormula formula = 2;
-  repeated ConstituencyResult constituency_results = 3;
-  uint64 total_votes_counted = 4;
+  repeated ConstituencyResult constituency_results = 2;
+  uint64 total_votes_counted = 3;
+  uint64 invalid_rejected_at_submit = 4;
   google.protobuf.Timestamp computed_at = 5;
+  bytes formula_content_hash = 6;
+  bytes log_head_hash = 7;
+}
+
+// Normative official package: results + log commitment + script hash + m-of-n sigs.
+message OfficialResultsPackage {
+  ElectionResults results = 1;
+  bytes log_head_hash = 2;
+  bytes formula_content_hash = 3;
+  string formula_catalog_script_id = 4;
+  // Canonical serialization of the signed payload is implementation-defined
+  // but MUST be documented; signatures cover that payload.
+  repeated CommissionSignature signatures = 5;
+}
+
+message CommissionSignature {
+  string key_id = 1;
+  bytes signature = 2;
+  google.protobuf.Timestamp signed_at = 3;
 }
 
 message GetResultsRequest {
@@ -67,25 +85,42 @@ message GetResultsResponse {
   bool published = 2;
 }
 
-// --- Events ---
-
-message WatchEventsRequest {
+message GetOfficialResultsPackageRequest {
   ElectionId election_id = 1;
+}
+message GetOfficialResultsPackageResponse {
+  OfficialResultsPackage package = 1;
+}
+
+message GetTallySnapshotRequest {
+  ElectionId election_id = 1;
+}
+message GetTallySnapshotResponse {
+  EventCursor cursor = 1;
+  bool closed = 2;
+  bool published = 3;
+  bytes log_head_hash = 4;
+  google.protobuf.Timestamp captured_at = 5;
 }
 
 message VotingWindowClosed {
   ElectionId election_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
+  bytes log_head_hash_hint = 3;
 }
 
 message ResultsPublished {
   ElectionId election_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
+  bytes results_payload_hash = 3;
+  bytes log_head_hash = 4;
+  bytes formula_content_hash = 5;
 }
 
 message TallyEvent {
+  EventCursor cursor = 1;
   oneof event {
-    VotingWindowClosed voting_window_closed = 1;
-    ResultsPublished results_published = 2;
+    VotingWindowClosed voting_window_closed = 2;
+    ResultsPublished results_published = 3;
   }
 }

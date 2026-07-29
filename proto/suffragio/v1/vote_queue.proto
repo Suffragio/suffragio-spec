@@ -7,52 +7,49 @@ import "suffragio/v1/common.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// VoteBroadcastQueue is the public, append-only, replicated log where
-// every cast vote is broadcast and visible to anyone. Nothing is ever
-// removed or modified once appended. See /architecture/#system-components.
+// Public append-only multi-writer vote log (hash chain, eventual consistency).
+// SubmitVote MUST use Freenet for public elections. No receipt_hash.
+// See protocol-v1.md.
 service VoteBroadcastQueue {
-  // --- Commands ---
   rpc SubmitVote(SubmitVoteRequest) returns (SubmitVoteResponse);
-
-  // --- Queries ---
-  // Streams every vote appended for the given election starting from
-  // after_sequence (0 = from the beginning), then keeps streaming new
-  // votes live if follow = true. This is how auditors and the Tally
-  // Engine consume the public log.
   rpc StreamVotes(StreamVotesRequest) returns (stream SignedVote);
-
-  // --- Events ---
+  rpc GetLogHead(GetLogHeadRequest) returns (GetLogHeadResponse);
+  rpc ReportLogHead(ReportLogHeadRequest) returns (ReportLogHeadResponse);
+  rpc GetVoteQueueSnapshot(GetVoteQueueSnapshotRequest) returns (GetVoteQueueSnapshotResponse);
   rpc WatchEvents(WatchEventsRequest) returns (stream VoteQueueEvent);
 }
-
-// --- Commands ---
 
 message SubmitVoteRequest {
   ElectionId election_id = 1;
   ConstituencyId constituency_id = 2;
-  // The voter's filled-in ballot.
+  // Deterministic CBOR filled ballot (same bytes covered by the signature).
   bytes ballot = 3;
-  // Unblinded signature obtained from the Blind Signature Authority,
-  // proving the ballot came from an eligible, single-use token.
+  // Unblinded BSA signature over the full ballot.
   bytes signature = 4;
+  string key_id = 5;
+  CryptoSuiteId suite_id = 6;
+  // Optional: client's view of prev chain hash when multi-writer (advisory).
+  bytes prev_hash = 7;
 }
 message SubmitVoteResponse {
   uint64 sequence = 1;
-  // Hash the voter can keep to later independently verify inclusion in
-  // the public log without revealing which entry is theirs to anyone else.
-  bytes receipt_hash = 2;
+  bytes entry_hash = 2;
+  bytes prev_hash = 3;
+  // Intentionally no receipt_hash (coercion resistance). protocol-v1.md.
 }
-
-// --- Queries ---
 
 message SignedVote {
   ElectionId election_id = 1;
   ConstituencyId constituency_id = 2;
   bytes ballot = 3;
   bytes signature = 4;
-  // Monotonically increasing position in the append-only queue.
-  uint64 sequence = 5;
-  google.protobuf.Timestamp received_at = 6;
+  string key_id = 5;
+  CryptoSuiteId suite_id = 6;
+  uint64 sequence = 7;
+  bytes entry_hash = 8;
+  bytes prev_hash = 9;
+  // Only present if election.publish_received_at is true.
+  google.protobuf.Timestamp received_at = 10;
 }
 
 message StreamVotesRequest {
@@ -61,20 +58,53 @@ message StreamVotesRequest {
   bool follow = 3;
 }
 
-// --- Events ---
-
-message WatchEventsRequest {
+message GetLogHeadRequest {
   ElectionId election_id = 1;
+}
+message GetLogHeadResponse {
+  bytes head_hash = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp observed_at = 3;
+}
+
+// Auxiliary sync signal (non-binding). Binding finality = signed results package.
+message ReportLogHeadRequest {
+  ElectionId election_id = 1;
+  string reporter_node_id = 2;
+  bytes head_hash = 3;
+  uint64 sequence = 4;
+}
+message ReportLogHeadResponse {}
+
+message GetVoteQueueSnapshotRequest {
+  ElectionId election_id = 1;
+}
+message GetVoteQueueSnapshotResponse {
+  EventCursor cursor = 1;
+  bytes head_hash = 2;
+  uint64 sequence = 3;
+  google.protobuf.Timestamp captured_at = 4;
 }
 
 message VoteCast {
   ElectionId election_id = 1;
   uint64 sequence = 2;
-  google.protobuf.Timestamp occurred_at = 3;
+  bytes entry_hash = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+message LogHeadReported {
+  ElectionId election_id = 1;
+  string reporter_node_id = 2;
+  bytes head_hash = 3;
+  uint64 sequence = 4;
+  google.protobuf.Timestamp occurred_at = 5;
 }
 
 message VoteQueueEvent {
+  EventCursor cursor = 1;
   oneof event {
-    VoteCast vote_cast = 1;
+    VoteCast vote_cast = 2;
+    LogHeadReported log_head_reported = 3;
   }
 }

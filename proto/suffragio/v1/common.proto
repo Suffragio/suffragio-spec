@@ -6,34 +6,28 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// Types shared across all Suffragio services. Every service-specific
-// .proto file in this package imports this file instead of redefining
-// these identifiers, so they stay consistent across the whole system.
+// Types shared across all Suffragio services. Normative behaviour: see
+// docs Protocol v1 (protocol-v1.md).
 
-// Globally unique identifier for an election.
 message ElectionId {
   string value = 1;
 }
 
-// Identifier of an electoral constituency within an election.
 message ConstituencyId {
   string value = 1;
 }
 
-// A single-use token proving a voter's eligibility for a specific
-// election/constituency, issued by the Registration & Eligibility
-// Service and consumed by the Blind Signature Authority.
+// Opaque random single-use token. Semantics live in Registration &
+// Eligibility server state; consumed via ConsumeEligibilityToken.
 message EligibilityToken {
   string value = 1;
 }
 
-// Electoral formulas supported by the Tally Engine. Extend this enum
-// (never reuse or renumber existing values) as new formulas are added.
-enum ElectoralFormula {
-  ELECTORAL_FORMULA_UNSPECIFIED = 0;
-  ELECTORAL_FORMULA_FIRST_PAST_THE_POST = 1;
-  ELECTORAL_FORMULA_DHONDT = 2;
-  ELECTORAL_FORMULA_SINGLE_TRANSFERABLE_VOTE = 3;
+// Versioned crypto suite identifiers (string, not enum, so new suites
+// can be added without breaking protobuf enums). Default v1 blind-sig:
+// "BLIND_SIG_RSA_FDH_3072_SHA256".
+message CryptoSuiteId {
+  string value = 1;
 }
 
 message Constituency {
@@ -41,18 +35,65 @@ message Constituency {
   string name = 2;
 }
 
-// Voting window during which SubmitVote is accepted for an election.
 message VotingWindow {
   google.protobuf.Timestamp starts_at = 1;
   google.protobuf.Timestamp ends_at = 2;
 }
 
-// A ballot template attached to a constituency. `schema_json` is a JSON
-// Schema document describing question types, choices, and layout, so the
-// Voter Client can render and validate an arbitrary ballot shape (yes/no,
-// single/multiple choice, ranked, party lists, etc.) without the protocol
-// itself needing to know about it.
+// BSA verification key published with the election.
+message BsaPublicKey {
+  string key_id = 1;
+  CryptoSuiteId suite_id = 2;
+  bytes public_key = 3;
+  google.protobuf.Timestamp not_before = 4;
+  google.protobuf.Timestamp not_after = 5;
+}
+
+// Ballot template: Suffragio ballot DSL (JSON), not raw JSON Schema.
+// See protocol-v1.md § Ballots.
 message BallotTemplate {
   ConstituencyId constituency_id = 1;
-  string schema_json = 2;
+  // e.g. "suffragio-ballot-dsl/1"
+  string dsl_version = 2;
+  // DSL document as UTF-8 JSON (stable question/option ids required).
+  string document_json = 3;
+}
+
+// How the tally Lua script is attached to an election.
+message FormulaScriptRef {
+  // SHA-256 (or election-pinned hash suite) of the exact script bytes.
+  // Authoritative: if catalog bytes disagree, hash wins / reject.
+  bytes content_hash = 1;
+  // Inline script bytes (mutually exclusive with catalog_script_id in practice).
+  bytes inline_script = 2;
+  // FormulaCatalog script id when not inline.
+  string catalog_script_id = 3;
+}
+
+// Normative election lifecycle. See protocol-v1.md § Election state machine.
+enum ElectionState {
+  ELECTION_STATE_UNSPECIFIED = 0;
+  ELECTION_STATE_DRAFT = 1;
+  ELECTION_STATE_READY = 2;
+  ELECTION_STATE_PUBLISHED = 3;
+  ELECTION_STATE_VOTING = 4;
+  ELECTION_STATE_CLOSED = 5;
+  ELECTION_STATE_TALLIED = 6;
+  ELECTION_STATE_RESULTS_PUBLISHED = 7;
+}
+
+// Resume token for WatchEvents streams.
+message EventCursor {
+  string value = 1;
+}
+
+// Shared empty-ish watch filter.
+message WatchEventsRequest {
+  ElectionId election_id = 1;
+  EventCursor after_cursor = 2;
+}
+
+// Generic content-addressed snapshot handle.
+message SnapshotId {
+  string value = 1;
 }

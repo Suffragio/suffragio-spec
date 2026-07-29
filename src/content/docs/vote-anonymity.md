@@ -21,22 +21,22 @@ The first separation is enforced by a **blind signature** scheme, originally int
 
 In a normal digital signature the signer reads the message, signs it, and the signature proves both authorship and message content. In a blind signature the signer verifies only an *obscured* token and produces a signature on that obscured value. The recipient can later remove the obscuring factor and obtain a signature on the real message — but the signer never saw the real message.
 
-Suffragio uses this as follows:
+Suffragio uses this as follows (normative detail: [Protocol v1](/suffragio-spec/protocol-v1/)):
 
-1. The voter authenticates to the **Registration & Eligibility Service** and receives a single-use `EligibilityToken`. This step is identity-linked: the service records that the token was issued to a particular eligible voter in a particular constituency.
-2. The voter’s local client generates a fresh ballot identifier and blinds it with a random value known only to the client.
-3. The client sends the blinded identifier together with the `EligibilityToken` to the **Blind Signature Authority** (BSA).
-4. The BSA checks that the token is valid and unused, consumes it, and signs the blinded identifier. Because the identifier is blinded, the BSA cannot read the ballot content and cannot later recognize the ballot that corresponds to this signature.
-5. The client removes the blinding factor locally. The result is a valid signature from the BSA on the real ballot identifier, but the BSA has no record of what that real identifier is.
+1. The voter authenticates to the **Registration & Eligibility Service** and receives a random single-use `EligibilityToken`. This step is identity-linked inside RegSvc only.
+2. The voter **fills the complete ballot**; the client encodes it as deterministic CBOR and blinds a suite-specific encoding of **those full bytes** (default `BLIND_SIG_RSA_FDH_3072_SHA256`).
+3. Over **Freenet**, the client sends the blinded value plus the token to the **BSA**.
+4. The BSA **atomically consumes** the token via RegSvc (response has **no** `voter_id`), then signs the blinded value. It never sees the unblinded ballot or the voter’s identity.
+5. The client unblinds locally. The result is a BSA signature on the **entire** filled ballot.
 
-The voter now holds a credential that proves *“the BSA certified one vote for one eligible voter”* without revealing which voter or which ballot.
+The voter holds proof that *“the BSA authorized this exact ballot content once”* without the BSA learning which voter or what choices.
 
 ## Temporal and process decoupling
 
 Even with blind signatures, an observer who sees both the issuance request and the cast vote at the same instant could try to correlate them by timing. Suffragio makes this harder by design:
 
 - The voter may request the blind signature at any point during the voting window, not necessarily immediately before casting.
-- The request can be routed through the anonymizing network (see below), so the BSA sees only a Freenet origin, not an IP address or identity provider session.
+- For public elections, **both** blind signing and vote submit **MUST** use Freenet, so the BSA and Queue see overlay origins rather than a direct link to the identity-verification session.
 - The `EligibilityToken` is consumed during signing, so the same identity cannot request a second signature. There is therefore exactly one signed ballot per eligible voter, but the BSA does not know which ballot it is.
 
 ## Anonymous transport: Freenet
@@ -51,13 +51,9 @@ This means that even if an attacker controls some nodes, correlating a network r
 
 ## The public vote log is anonymous
 
-Once the voter marks their choices, the completed ballot is submitted to the **Vote Broadcast Queue**. This queue is public and append-only: anyone can download every cast vote and independently verify signatures and the final tally. However, the queue contains only:
+The completed ballot is submitted to the **Vote Broadcast Queue** over Freenet. The queue is public, multi-writer, hash-chained, and eventually consistent: anyone can download cast votes and verify BSA signatures (using the election’s published `key_id` list) and the official m-of-n results package. Entries contain the CBOR ballot, signature, and chain hashes — **not** voter id, session, or (by default in public elections) a precise public `received_at`.
 
-- the signed ballot identifier,
-- the voter’s choices,
-- cryptographic proof that the ballot was signed by the BSA.
-
-There is no voter ID, session cookie, IP address, or timestamp linked to a real-world identity. The signature proves eligibility; the ballot content remains anonymous.
+There is **no** cryptographic `receipt_hash` that a third party can demand as proof of how someone voted. The voter may keep a local copy of their ballot and later confirm that an identical entry appears in the official log.
 
 ## What each actor can and cannot see
 
@@ -71,7 +67,7 @@ There is no voter ID, session cookie, IP address, or timestamp linked to a real-
 
 ## Coercion resistance (optional hardening)
 
-The requirements list *prevention of vote selling and coercion* as an optional goal. The base design already resists passive coercion: because no receipt links a voter to a ballot, a voter cannot prove to a coercer how they voted. Additional mechanisms, such as coercion-resistant credentials or randomized ballot re-encryption, can be added later without changing the core blind-signature flow.
+The requirements list *prevention of vote selling and coercion* as an optional goal. The base design avoids issuing a binding third-party receipt (`receipt_hash` was explicitly removed in v1). Stronger coercion resistance (deniable credentials, etc.) remains future work.
 
 ## Summary
 

@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package suffragio.v1;
+
+import "google/protobuf/timestamp.proto";
+import "suffragio/v1/common.proto";
+
+option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
+
+// FormulaCatalog stores and discovers Lua tally scripts. Elections pin
+// scripts by content_hash (inline or via catalog_script_id).
+// See protocol-v1.md § Electoral formulas.
+service FormulaCatalog {
+  rpc PublishScript(PublishScriptRequest) returns (PublishScriptResponse);
+  rpc GetScript(GetScriptRequest) returns (GetScriptResponse);
+  rpc ListScripts(ListScriptsRequest) returns (ListScriptsResponse);
+  rpc GetFormulaCatalogSnapshot(GetFormulaCatalogSnapshotRequest) returns (GetFormulaCatalogSnapshotResponse);
+  rpc WatchEvents(WatchEventsRequest) returns (stream FormulaCatalogEvent);
+}
+
+message FormulaScriptMetadata {
+  string script_id = 1;
+  string title = 2;
+  string description = 3;
+  // Free-form tags, e.g. "pl-sejm", "pl-president", "referendum".
+  repeated string tags = 4;
+  bytes content_hash = 5;
+  google.protobuf.Timestamp published_at = 6;
+}
+
+message PublishScriptRequest {
+  string title = 1;
+  string description = 2;
+  repeated string tags = 3;
+  // Lua source bytes.
+  bytes script = 4;
+}
+message PublishScriptResponse {
+  string script_id = 1;
+  bytes content_hash = 2;
+}
+
+message GetScriptRequest {
+  string script_id = 1;
+  // If set, server MUST return NOT_FOUND unless bytes match.
+  bytes expected_content_hash = 2;
+}
+message GetScriptResponse {
+  FormulaScriptMetadata metadata = 1;
+  bytes script = 2;
+}
+
+message ListScriptsRequest {
+  string query = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  string tag = 4;
+}
+message ListScriptsResponse {
+  repeated FormulaScriptMetadata scripts = 1;
+  string next_page_token = 2;
+}
+
+message GetFormulaCatalogSnapshotRequest {}
+message GetFormulaCatalogSnapshotResponse {
+  EventCursor cursor = 1;
+  repeated FormulaScriptMetadata scripts = 2;
+  google.protobuf.Timestamp captured_at = 3;
+}
+
+message ScriptPublished {
+  FormulaScriptMetadata metadata = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}
+
+message FormulaCatalogEvent {
+  EventCursor cursor = 1;
+  oneof event {
+    ScriptPublished script_published = 2;
+  }
+}

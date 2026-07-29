@@ -7,46 +7,49 @@ import "suffragio/v1/common.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// BlindSignatureAuthority consumes an EligibilityToken and issues a blind
-// signature over a ballot it cannot read, guaranteeing that the act of
-// *authorizing* a ballot is never linkable to the act of *casting* it.
-// See /architecture/#blind-signature-ballot-issuance.
+// BlindSignatureAuthority issues blind signatures over full filled ballots.
+// For public elections, RequestBlindSignature MUST be reached via Freenet.
+// BSA calls RegistrationEligibility.ConsumeEligibilityToken (no voter_id).
+// See protocol-v1.md.
 service BlindSignatureAuthority {
-  // --- Commands ---
   rpc RequestBlindSignature(RequestBlindSignatureRequest) returns (RequestBlindSignatureResponse);
 
-  // --- Events ---
+  rpc GetBlindSignatureSnapshot(GetBlindSignatureSnapshotRequest) returns (GetBlindSignatureSnapshotResponse);
   rpc WatchEvents(WatchEventsRequest) returns (stream BlindSignatureEvent);
 }
-
-// --- Commands ---
 
 message RequestBlindSignatureRequest {
   ElectionId election_id = 1;
   EligibilityToken token = 2;
-  // Blinded representation of the blank ballot (e.g. RSA or BLS blind
-  // signature scheme). The authority never sees the unblinded value.
+  // Blinded encoding of the deterministic CBOR filled ballot (suite-specific).
   bytes blinded_ballot = 3;
+  // Which published BSA key will correspond after unblinding.
+  string key_id = 4;
+  CryptoSuiteId suite_id = 5;
 }
 message RequestBlindSignatureResponse {
   bytes blind_signature = 1;
+  string key_id = 2;
 }
 
-// --- Events ---
-
-message WatchEventsRequest {
+message GetBlindSignatureSnapshotRequest {
   ElectionId election_id = 1;
 }
+message GetBlindSignatureSnapshotResponse {
+  EventCursor cursor = 1;
+  google.protobuf.Timestamp captured_at = 2;
+  uint64 signatures_issued_count = 3;
+}
 
-// Proves that one more signature was issued for this election, without
-// revealing the token, the blinded value, or any link to a later vote.
 message BlindSignatureIssued {
   ElectionId election_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
+  // No token, ballot, signature, or voter identity.
 }
 
 message BlindSignatureEvent {
+  EventCursor cursor = 1;
   oneof event {
-    BlindSignatureIssued blind_signature_issued = 1;
+    BlindSignatureIssued blind_signature_issued = 2;
   }
 }

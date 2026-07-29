@@ -3,7 +3,9 @@ title: System Architecture
 description: Proposed architecture for the Suffragio electoral system — actors, components, network layer, commands, events, and the end-to-end voting process.
 ---
 
-This page proposes a system architecture that satisfies the goals and requirements described in [Motivation & Requirements](/suffragio-spec/motivation/). It is a first design draft, intended as a basis for further discussion and refinement.
+This page describes the system architecture that satisfies the goals in [Motivation & Requirements](/suffragio-spec/motivation/).
+
+**Normative protocol rules for implementers** (cryptography, ballots, Lua tallies, auth, state machine, Freenet, audit package) are in [Protocol v1](/suffragio-spec/protocol-v1/). Wire shapes are in the [gRPC API Reference](/suffragio-spec/api-reference/) and `proto/suffragio/v1/`. If prose here disagrees with Protocol v1, **Protocol v1 wins**.
 
 ## Actors
 
@@ -16,11 +18,12 @@ This page proposes a system architecture that satisfies the goals and requiremen
 
 **System actors (services / nodes)**
 
-- **Blind Signature Authority (BSA)** — verifies a voter's eligibility token and blindly signs their ballot, without ever seeing the ballot's content.
-- **Vote Broadcast Queue** — a public, append-only, replicated log where every cast vote is broadcast and visible to anyone.
-- **Tally Engine** — a pluggable component that applies the configured electoral formula to the vote log after the voting window closes.
-- **Election Catalog** — a public, browsable directory of upcoming, ongoing, and past elections, aggregated from every organizer on the network.
-- **Network Node Operator** — anyone running a Suffragio node, participating in discovery, broadcast, and archival of election data.
+- **Blind Signature Authority (BSA)** — consumes an eligibility token (via RegSvc) and blindly signs the **full** filled ballot, without seeing unblinded content or the voter's identity.
+- **Vote Broadcast Queue** — a public, append-only, multi-writer hash-chained log (eventual consistency) of cast votes.
+- **Tally Engine** — runs the election-pinned **Lua** script over the committed vote log and publishes the official m-of-n-signed results package.
+- **Formula Catalog** — publishes and discovers reusable Lua tally scripts (elections always pin `content_hash`).
+- **Election Catalog** — browsable directory of elections (Discovery service), aggregated across organizers/trackers.
+- **Network Node Operator** — anyone running a Suffragio node.
 
 ```mermaid
 flowchart LR
@@ -43,31 +46,31 @@ flowchart LR
         Freenet["Freenet — anonymous transport &amp; durable archive"]
     end
 
-    Organizer -- "gRPC: CreateElection, DefineBallotTemplate, SetElectoralFormula" --> Registry
-    Registrar -- "gRPC: RegisterVoterRoll, VerifyIdentity, RevokeVotingRights" --> RegSvc
-    Voter -- "VerifyIdentity" --> RegSvc
-    Voter -- "RequestBlindSignature (via Freenet)" --> BSA
-    BSA -- "checks token" --> RegSvc
-    Voter -- "SubmitVote (via Freenet)" --> Queue
+    Organizer -- "gRPC: config, Lua formula, BSA keys" --> Registry
+    Registrar -- "gRPC: roll, VerifyIdentity, Revoke" --> RegSvc
+    Voter -- "VerifyIdentity (gRPC OK)" --> RegSvc
+    Voter -- "RequestBlindSignature (Freenet required)" --> BSA
+    BSA -- "ConsumeEligibilityToken" --> RegSvc
+    Voter -- "SubmitVote (Freenet required)" --> Queue
     Queue --> Tally
-    Tally --> Registry
+    Tally -- "m-of-n results package" --> Auditor
     Registry --> Freenet
     Queue --> Freenet
-    Auditor --> Freenet
     Auditor --> Queue
 ```
 
 ## System components
 
-- **Voter Client** — local application that generates the blinding factor, requests a blind signature, unblinds it, and submits the finished vote.
-- **Election Registry** — the source of truth for immutable election configuration: constituencies, ballot templates, the electoral formula, the voting window, and public keys.
-- **Registration & Eligibility Service** — validates a voter's identity and constituency, checks the electoral roll and any rights revocations, and issues a single-use `EligibilityToken`.
-- **Blind Signature Authority (BSA)** — consumes an `EligibilityToken` and issues a blind signature over a ballot it cannot read, guaranteeing that the act of *authorizing* a ballot is never linkable to the act of *casting* it.
-- **Vote Broadcast Queue** — the public, append-only bulletin board of all cast votes. Nothing is ever removed or modified once appended.
-- **Tally Engine** — a pluggable module implementing a specific electoral formula (e.g. first-past-the-post, D'Hondt, single transferable vote); consumes the vote queue and produces results.
-- **Election Catalog** — a read-only projection built by indexing the `ElectionPublished` and `ElectionScheduled` events broadcast by every organizer on the network. It works like an app-store listing: anyone can browse it, without authenticating, to find an election they may be eligible for and see its schedule, constituencies, and organizer — before starting identity verification.
-- **External Identity Adapters (anti-corruption layer)** — a family of adapters that translate a variety of external identity and eligibility sources into the single generic interface the Registration & Eligibility Service depends on. See [External identity integration](#external-identity-integration-anti-corruption-layer) below.
-- **P2P overlay network** — see below.
+- **Voter Client** — builds the filled ballot (deterministic CBOR), blinds it, requests a blind signature over Freenet, unblinds, submits over Freenet; keeps a local copy to find itself in the public log (no third-party receipt).
+- **Election Registry** — source of truth for configuration: constituencies, ballot DSL templates, Lua formula ref + hash, BSA public key list, voting window, lifecycle state, `publish_received_at` flag.
+- **Registration & Eligibility Service** — identity/roll checks, issues random single-use `EligibilityToken`s, atomic `ConsumeEligibilityToken` for BSA (no `voter_id` in response). Revoke affects rolls/new tokens only.
+- **Blind Signature Authority (BSA)** — after successful consume, blindly signs the full ballot; never learns voter identity or unblinded content.
+- **Vote Broadcast Queue** — multi-writer append-only hash chain; verifies BSA signature and ballot DSL; rejects invalid ballots at submit.
+- **Tally Engine** — sandboxed Lua; official close via signed `CloseVotingWindow`; publishes results package (results + log head + script hash + m-of-n signatures).
+- **Formula Catalog** — library of Lua scripts (presets e.g. PL Sejm/Senat/president/referendum are content, not core engines).
+- **Election Catalog (Discovery)** — browsable elections and node roles across trackers.
+- **External Identity Adapters** — IdentityProvider port for voters; separate pluggable **AuthZ** port for organizers (default OIDC). See below.
+- **P2P overlay (Freenet)** — required anonymizing transport for BSA + SubmitVote on public elections.
 
 ## Component diagram
 
@@ -84,6 +87,7 @@ flowchart TB
         BSA["Blind Signature Authority"]
         Queue["Vote Broadcast Queue"]
         Tally["Tally Engine"]
+        Formulas["Formula Catalog"]
     end
 
     subgraph Adapters["External identity adapters (anti-corruption layer)"]
@@ -109,6 +113,8 @@ flowchart TB
     VC --> BSA
     VC --> Queue
     Catalog --> Registry
+    Tally --> Formulas
+    Registry --> Formulas
     RegSvc --> GovAdapter
     RegSvc --> LDAPAdapter
     RegSvc --> OIDCAdapter
@@ -119,32 +125,37 @@ flowchart TB
     EidAdapter --> EidNode
     BSA --> RegSvc
     Queue --> Tally
-    Tally --> Registry
     Catalog -.-> Freenet
     Queue -.-> Freenet
+    BSA -.-> Freenet
     Registry -.-> Freenet
 ```
 
 ## Blind-signature ballot issuance
 
-To keep eligibility verification and vote casting cryptographically unlinkable, ballots are issued using a **blind signature** scheme:
+To keep eligibility verification and vote casting cryptographically unlinkable, ballots use a **versioned blind signature** scheme. Default suite: `BLIND_SIG_RSA_FDH_3072_SHA256` (see [Protocol v1](/suffragio-spec/protocol-v1/)).
 
-1. The voter authenticates with the **Registration & Eligibility Service** (electronically or in person) and receives a single-use `EligibilityToken` for their constituency.
-2. The voter locally generates a blank ballot token and blinds it using a random blinding factor.
-3. The voter sends the blinded ballot plus the `EligibilityToken` to the **Blind Signature Authority**. The BSA verifies and consumes the token, then signs the *blinded* value — it never sees the real ballot content and cannot link this signing event to any later vote.
-4. The voter unblinds the signature locally, obtaining a validly signed, anonymous ballot.
-5. The voter marks their choice on the ballot and submits it — over the anonymous network transport, disconnected from their verified identity — to the **Vote Broadcast Queue**.
+1. The voter authenticates with **RegSvc** (client assertion and/or server-side session: OIDC, mObywatel, in-person, …) and receives a **random** single-use `EligibilityToken` (state held in RegSvc).
+2. The voter **fills the entire ballot** first; the client encodes it as **deterministic CBOR** and validates it against the constituency ballot DSL (stable option `id`s).
+3. The client blinds the suite-specific encoding of those CBOR bytes and sends them with the token to the **BSA over Freenet** (public elections).
+4. BSA calls **`ConsumeEligibilityToken`** on RegSvc (atomic; response has **no** `voter_id`). On success it signs the blinded value with the selected `key_id` from the election’s BSA key list.
+5. The client unblinds locally → signature verifies on the full CBOR ballot.
+6. The client **`SubmitVote`s over Freenet** with `ballot`, `signature`, `key_id`. The Queue verifies the signature **and** DSL validity; invalid ballots are rejected (no append). There is **no** `receipt_hash`.
 
-Because steps 1–3 (identity-linked) and step 5 (anonymous casting) are cryptographically and temporally decoupled, no party — including the BSA and Registration Service — can determine how a specific voter voted, while the signature still proves the ballot came from an eligible, single-use token.
+Identity-linked steps (1) stay off Freenet if needed for eID UX; authorization (4) and casting (6) stay unlinkable from identity at the BSA/Queue.
 
 ## External identity integration (anti-corruption layer)
 
-Requiring every deployment to use one specific identity system would break the universality and digital-independence requirements: a national government, a company running an internal election, and a small association all have very different sources of truth for "who is allowed to vote, and in what constituency." The **Registration & Eligibility Service** therefore never talks to an external identity system directly. It depends only on a small, generic internal port:
+Requiring every deployment to use one specific identity system would break the universality and digital-independence requirements: a national government, a company running an internal election, and a small association all have very different sources of truth for "who is allowed to vote, and in what constituency." The **Registration & Eligibility Service** never talks to an external identity system directly. It depends on a small internal port (client assertion **or** server session):
 
 ```text
-IdentityProvider.verify(claimantProof) -> { eligible: bool, voterId, constituencyId }
-IdentityProvider.isRevoked(voterId) -> bool
+IdentityProvider.complete(election_id, proof_or_session) -> { eligible, voter_id, constituency_id }
+IdentityProvider.is_revoked(election_id, voter_id) -> bool
 ```
+
+Organizer/admin authorization is a **separate** pluggable port (default OIDC JWT → action strings); Suffragio validates permissions and does not replace enterprise IdP/RBAC. See [Protocol v1](/suffragio-spec/protocol-v1/).
+
+`voter_id` values are opaque, **stable within one election**, and **unlinkable across elections** for external observers (never raw PESEL in the API).
 
 Each concrete integration is implemented as an **adapter** behind this port — an application of the anti-corruption layer pattern: the quirks, data models, and legacy protocols of an external system are translated and isolated in the adapter, so they never leak into Suffragio's core domain model. Proposed adapters:
 
@@ -164,43 +175,31 @@ All communication between the Voter Client, the Election Registry, the Registrat
 
 The full, implementation-ready protocol — request/response fields for every command and query, and the fields on every event — is documented on the [gRPC API Reference](/suffragio-spec/api-reference/) page, backed by the canonical `.proto` files in [`proto/suffragio/v1/`](https://github.com/Suffragio/suffragio-spec/tree/main/proto/suffragio/v1).
 
-### Commands
+### Commands (summary)
+
+Full fields: [gRPC API Reference](/suffragio-spec/api-reference/). Behaviour: [Protocol v1](/suffragio-spec/protocol-v1/).
 
 | Service | Command | Description |
 | --- | --- | --- |
-| Election Registry | `CreateElection` | Registers a new election and its constituencies. |
-| Election Registry | `DefineBallotTemplate` | Attaches a ballot template to an election/constituency. |
-| Election Registry | `SetElectoralFormula` | Selects the algorithm used to compute results. |
-| Election Registry | `ScheduleElection` | Sets the voting window (start/end). |
-| Election Registry | `PublishElection` | Makes the election publicly discoverable. |
-| Registration & Eligibility | `RegisterVoterRoll` | Loads/updates the list of eligible voters for a constituency. |
-| Registration & Eligibility | `VerifyIdentity` | Verifies a voter's identity and issues an `EligibilityToken`. |
-| Registration & Eligibility | `RevokeVotingRights` | Revokes a voter's eligibility (death, disenfranchisement, etc.). |
-| Blind Signature Authority | `RequestBlindSignature` | Consumes an `EligibilityToken` and blindly signs a ballot. |
-| Vote Broadcast Queue | `SubmitVote` | Appends a signed, anonymous vote to the public log. |
-| Tally Engine | `CloseVotingWindow` | Closes voting for an election. |
-| Tally Engine | `ComputeResults` | Runs the configured electoral formula over the vote log. |
-| Tally Engine | `PublishResults` | Publishes the final, auditable results. |
-| Discovery | `AnnounceNode` | Announces a node's presence to the overlay network. |
-| Discovery | `DiscoverElections` | Queries the network for available elections. |
+| Election Registry | `CreateElection`, `DefineBallotTemplate`, `SetFormulaScript`, `AddBsaPublicKey`, `ScheduleElection`, `SetPublicTimestamps`, `TransitionElectionState`, `PublishElection` | Config, Lua pin, BSA keys, lifecycle |
+| Registration & Eligibility | `RegisterVoterRoll`, `VerifyIdentity`, `RevokeVotingRights`, `ConsumeEligibilityToken` | Rolls, tokens; consume is BSA-only |
+| Blind Signature Authority | `RequestBlindSignature` | Freenet (public elections); full-ballot blind sign |
+| Vote Broadcast Queue | `SubmitVote`, `GetLogHead`, `ReportLogHead` | Hash chain log; no receipt |
+| Tally Engine | `CloseVotingWindow`, `ComputeResults`, `PublishResults` | Signed close; Lua; m-of-n package |
+| Formula Catalog | `PublishScript`, `GetScript`, `ListScripts` | Lua script library |
+| Discovery | `AnnounceNode`, `DiscoverElections` | Nodes + election catalog |
 
-### Events
+Mutations use gRPC metadata `idempotency-key`. Services expose `WatchEvents` (cursor) and snapshot RPCs.
 
-| Event | Emitted by | Description |
-| --- | --- | --- |
-| `ElectionCreated` | Election Registry | A new election was registered. |
-| `BallotTemplateDefined` | Election Registry | A ballot template was attached to an election. |
-| `ElectoralFormulaSet` | Election Registry | The electoral formula was configured. |
-| `ElectionScheduled` | Election Registry | The voting window was set. |
-| `ElectionPublished` | Election Registry | The election became publicly discoverable. |
-| `VoterRegistered` | Registration & Eligibility | A voter was added to a constituency roll. |
-| `VoterEligibilityVerified` | Registration & Eligibility | A voter's identity was verified and a token issued. |
-| `VoterRightsRevoked` | Registration & Eligibility | A voter's eligibility was revoked. |
-| `BlindSignatureIssued` | Blind Signature Authority | A token was consumed and a blind signature issued (anonymous — no ballot content). |
-| `VoteCast` | Vote Broadcast Queue | A signed, anonymous vote was appended to the public log. |
-| `VotingWindowClosed` | Tally Engine | Voting closed for an election. |
-| `ResultsPublished` | Tally Engine | Final results were computed and published. |
-| `NodeAnnounced` | Discovery | A network node announced itself to the overlay. |
+### Events (summary)
+
+Registry: created, template, formula hash, BSA key, scheduled, state transition, published.  
+RegSvc: registered, eligibility verified (no voter_id), rights revoked, token consumed.  
+BSA: signature issued (anonymous).  
+Queue: vote cast, log head reported (sync hint).  
+Tally: window closed, results published (with package hashes).  
+Formula catalog: script published.  
+Discovery: node announced.
 
 ## P2P network layer: Freenet
 
@@ -210,8 +209,9 @@ The proposal runs entirely on **[Freenet](https://freenet.org)** — the activel
 
 Unlike the original, static-content-only Freenet, this Rust implementation is built around WebAssembly **contracts** that support both durable, content-addressed storage *and* near-real-time state updates delivered to subscribers. That single primitive covers both of Suffragio's needs on one network:
 
-- **Live, interactive requests** — voters and organizers calling the Registration Service, the Blind Signature Authority, and the Vote Broadcast Queue are backed by contract state updates propagated to subscribers over Freenet, so no separate low-latency transport network is required.
-- **Durable, censorship-resistant archive** — the published ballot templates, the append-only vote log, and the final results are stored the same way: as Freenet contract state, replicated and content-addressed, remaining available even if the original publishing node goes offline.
+- **Mandatory anonymizing path (public elections)** — `RequestBlindSignature` and `SubmitVote` MUST use Freenet (or equivalent binding). `VerifyIdentity` and organizer admin RPCs MAY use plain gRPC for eID/IdP integration.
+- **Durable archive** — ballot templates, the vote log, and official results packages SHOULD also be mirrored as Freenet contract state where censorship resistance matters.
+- **Vote log consistency** — multi-writer hash chain with **eventual consistency**; official results may wait hours for sync. Binding commitment is the commission **m-of-n signed results package** (log head + Lua hash + results), not the first peer ACK.
 
 Suffragio is not a single global network, either: like BitTorrent swarms coordinated by independent trackers, different organizers can run their election(s) on their own, physically separate P2P network, coordinated by their own **tracker** node (identified by its Freenet key). A voter's client discovers which network a given election lives on through the Election Catalog, then connects to that network's own Registration & Eligibility Service, Blind Signature Authority, and Vote Broadcast Queue — so one organizer's network being unreachable or compromised has no bearing on any other election.
 
@@ -233,11 +233,11 @@ flowchart TD
         B0["Voter: browse Election Catalog, select election"]
         B1["Registrar: register voter roll (ahead of voting)"]
         B2["Voter: verify identity → EligibilityToken"]
-        B3["Voter: blind ballot, request signature"]
-        B4["BSA: verify &amp; consume token, sign blindly"]
-        B5["Voter: unblind signature → valid ballot"]
-        B6["Voter: mark choice, submit via Freenet"]
-        B7["Vote Broadcast Queue: append signed vote"]
+        B3["Voter: fill ballot (CBOR), blind, request sig via Freenet"]
+        B4["BSA: ConsumeToken @ RegSvc, sign blindly"]
+        B5["Voter: unblind → sig over full ballot"]
+        B6["Voter: SubmitVote via Freenet"]
+        B7["Queue: verify sig + DSL, append hash chain"]
         B0 --> B2
         B1 --> B2
         B2 --> B3 --> B4 --> B5 --> B6 --> B7
@@ -245,11 +245,11 @@ flowchart TD
 
     subgraph Phase3["3. Verification"]
         direction TB
-        C1["Network: broadcast all cast votes"]
-        C2["Auditor: download &amp; verify signatures"]
-        C3["Tally Engine: apply electoral formula"]
-        C4["Organizer: publish results"]
-        C5["Freenet: archive vote log &amp; results permanently"]
+        C1["Network: replicate log (eventual consistency)"]
+        C2["Auditor: verify sigs + DSL against log head"]
+        C3["Commission: signed Close; Lua tally"]
+        C4["Publish m-of-n official package"]
+        C5["Archive package + log"]
         C1 --> C2
         C1 --> C3 --> C4 --> C5
     end

@@ -7,39 +7,18 @@ import "suffragio/v1/common.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// Discovery backs the public Election Catalog: node announcement on the
-// P2P overlay, and the browsable directory of upcoming/ongoing/past
-// elections built by indexing ElectionRegistryEvent.election_published and
-// election_scheduled. See /architecture/#system-components.
-//
-// Suffragio is not a single global network: like BitTorrent swarms
-// coordinated by different trackers, different organizers may run their
-// election(s) on physically separate P2P networks, each coordinated by its
-// own tracker node. Every response from this service therefore identifies
-// the tracker (by its Freenet key) that produced it, or that a given
-// election lives behind, so a client knows which network to join next.
+// Discovery backs the public Election Catalog and node announcement.
+// See protocol-v1.md and architecture.md.
 service Discovery {
-  // --- Commands ---
   rpc AnnounceNode(AnnounceNodeRequest) returns (AnnounceNodeResponse);
-
-  // --- Queries ---
   rpc DiscoverElections(DiscoverElectionsRequest) returns (DiscoverElectionsResponse);
-
-  // --- Events ---
+  rpc GetDiscoverySnapshot(GetDiscoverySnapshotRequest) returns (GetDiscoverySnapshotResponse);
   rpc WatchEvents(WatchEventsRequest) returns (stream DiscoveryEvent);
 }
 
-// Identifies the tracker network a node, election, or response belongs
-// to. Two clients pointed at different trackers are, for all practical
-// purposes, on different Suffragio networks and will not see each
-// other's nodes or elections unless a tracker explicitly federates with
-// another (out of scope for this protocol version).
 message TrackerRef {
-  // Freenet key (e.g. a USK) of the tracker coordinating this network.
   string freenet_key = 1;
 }
-
-// --- Commands ---
 
 enum NodeRole {
   NODE_ROLE_UNSPECIFIED = 0;
@@ -49,14 +28,13 @@ enum NodeRole {
   NODE_ROLE_VOTE_BROADCAST_QUEUE = 4;
   NODE_ROLE_TALLY_ENGINE = 5;
   NODE_ROLE_CATALOG_MIRROR = 6;
+  NODE_ROLE_FORMULA_CATALOG = 7;
 }
 
 message NodeInfo {
   string node_id = 1;
   repeated NodeRole roles = 2;
-  // This node's own Freenet key (USK/CHK), used to reach it directly.
   string freenet_key = 3;
-  // Tracker network this node announced itself on.
   TrackerRef tracker = 4;
 }
 
@@ -64,12 +42,8 @@ message AnnounceNodeRequest {
   NodeInfo node = 1;
 }
 message AnnounceNodeResponse {
-  // The tracker that accepted the announcement, confirming which network
-  // the node is now part of.
   TrackerRef tracker = 1;
 }
-
-// --- Queries ---
 
 message ElectionSummary {
   ElectionId election_id = 1;
@@ -77,43 +51,38 @@ message ElectionSummary {
   repeated Constituency constituencies = 3;
   VotingWindow voting_window = 4;
   bool published = 5;
-  // Tracker network this election's services (Election Registry,
-  // Registration & Eligibility, BSA, Vote Broadcast Queue, ...) run on.
-  // Different elections discovered in the same DiscoverElections response
-  // may point to different trackers.
   TrackerRef tracker = 6;
+  ElectionState state = 7;
 }
 
 message DiscoverElectionsRequest {
-  // Free-text filter over title/organizer. Empty = all published elections.
   string query = 1;
   int32 page_size = 2;
   string page_token = 3;
-  // Optional: restrict results to elections on this tracker network only.
-  // Empty = query the tracker this request was sent to (and any networks
-  // it federates with, if applicable).
   TrackerRef tracker = 4;
 }
 message DiscoverElectionsResponse {
   repeated ElectionSummary elections = 1;
   string next_page_token = 2;
-  // The tracker that answered this query.
   TrackerRef tracker = 3;
 }
 
-// --- Events ---
-
-message WatchEventsRequest {}
+message GetDiscoverySnapshotRequest {}
+message GetDiscoverySnapshotResponse {
+  EventCursor cursor = 1;
+  repeated NodeInfo nodes = 2;
+  google.protobuf.Timestamp captured_at = 3;
+}
 
 message NodeAnnounced {
   NodeInfo node = 1;
   google.protobuf.Timestamp occurred_at = 2;
-  // The tracker network the announcement was observed on.
   TrackerRef tracker = 3;
 }
 
 message DiscoveryEvent {
+  EventCursor cursor = 1;
   oneof event {
-    NodeAnnounced node_announced = 1;
+    NodeAnnounced node_announced = 2;
   }
 }

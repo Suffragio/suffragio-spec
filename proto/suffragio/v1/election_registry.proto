@@ -7,28 +7,24 @@ import "suffragio/v1/common.proto";
 
 option go_package = "github.com/suffragio/suffragio-spec/gen/go/suffragio/v1;suffragiov1";
 
-// ElectionRegistry is the source of truth for immutable election
-// configuration: constituencies, ballot templates, the electoral formula,
-// and the voting window. See /architecture/#system-components.
+// ElectionRegistry is the source of truth for election configuration.
+// Normative rules: protocol-v1.md.
 service ElectionRegistry {
-  // --- Commands ---
   rpc CreateElection(CreateElectionRequest) returns (CreateElectionResponse);
   rpc DefineBallotTemplate(DefineBallotTemplateRequest) returns (DefineBallotTemplateResponse);
-  rpc SetElectoralFormula(SetElectoralFormulaRequest) returns (SetElectoralFormulaResponse);
+  rpc SetFormulaScript(SetFormulaScriptRequest) returns (SetFormulaScriptResponse);
+  rpc AddBsaPublicKey(AddBsaPublicKeyRequest) returns (AddBsaPublicKeyResponse);
   rpc ScheduleElection(ScheduleElectionRequest) returns (ScheduleElectionResponse);
+  rpc SetPublicTimestamps(SetPublicTimestampsRequest) returns (SetPublicTimestampsResponse);
+  rpc TransitionElectionState(TransitionElectionStateRequest) returns (TransitionElectionStateResponse);
   rpc PublishElection(PublishElectionRequest) returns (PublishElectionResponse);
 
-  // --- Queries ---
   rpc GetElection(GetElectionRequest) returns (GetElectionResponse);
   rpc ListElections(ListElectionsRequest) returns (ListElectionsResponse);
+  rpc GetElectionSnapshot(GetElectionSnapshotRequest) returns (GetElectionSnapshotResponse);
 
-  // --- Events ---
-  // Server-streaming subscription to every event this service emits.
-  // Pass an empty election_id to subscribe to all elections.
   rpc WatchEvents(WatchEventsRequest) returns (stream ElectionRegistryEvent);
 }
-
-// --- Commands ---
 
 message CreateElectionRequest {
   string title = 1;
@@ -44,13 +40,18 @@ message DefineBallotTemplateRequest {
 }
 message DefineBallotTemplateResponse {}
 
-message SetElectoralFormulaRequest {
+// Replaces the former SetElectoralFormula enum approach: Lua only in v1.
+message SetFormulaScriptRequest {
   ElectionId election_id = 1;
-  ElectoralFormula formula = 2;
-  // Formula-specific parameters, e.g. { "seats": "10" } for D'Hondt.
-  map<string, string> params = 3;
+  FormulaScriptRef script = 2;
 }
-message SetElectoralFormulaResponse {}
+message SetFormulaScriptResponse {}
+
+message AddBsaPublicKeyRequest {
+  ElectionId election_id = 1;
+  BsaPublicKey key = 2;
+}
+message AddBsaPublicKeyResponse {}
 
 message ScheduleElectionRequest {
   ElectionId election_id = 1;
@@ -58,21 +59,38 @@ message ScheduleElectionRequest {
 }
 message ScheduleElectionResponse {}
 
+// When true, StreamVotes may include received_at. Default for public
+// political elections MUST be false (protocol-v1.md).
+message SetPublicTimestampsRequest {
+  ElectionId election_id = 1;
+  bool publish_received_at = 2;
+}
+message SetPublicTimestampsResponse {}
+
+message TransitionElectionStateRequest {
+  ElectionId election_id = 1;
+  ElectionState to_state = 2;
+}
+message TransitionElectionStateResponse {
+  ElectionState state = 1;
+}
+
 message PublishElectionRequest {
   ElectionId election_id = 1;
 }
 message PublishElectionResponse {}
-
-// --- Queries ---
 
 message ElectionConfig {
   ElectionId election_id = 1;
   string title = 2;
   repeated Constituency constituencies = 3;
   repeated BallotTemplate ballot_templates = 4;
-  ElectoralFormula formula = 5;
-  VotingWindow voting_window = 6;
-  bool published = 7;
+  FormulaScriptRef formula_script = 5;
+  repeated BsaPublicKey bsa_public_keys = 6;
+  VotingWindow voting_window = 7;
+  ElectionState state = 8;
+  bool published = 9;
+  bool publish_received_at = 10;
 }
 
 message GetElectionRequest {
@@ -91,10 +109,13 @@ message ListElectionsResponse {
   string next_page_token = 2;
 }
 
-// --- Events ---
-
-message WatchEventsRequest {
+message GetElectionSnapshotRequest {
   ElectionId election_id = 1;
+}
+message GetElectionSnapshotResponse {
+  ElectionConfig election = 1;
+  EventCursor cursor = 2;
+  google.protobuf.Timestamp captured_at = 3;
 }
 
 message ElectionCreated {
@@ -109,9 +130,16 @@ message BallotTemplateDefined {
   google.protobuf.Timestamp occurred_at = 3;
 }
 
-message ElectoralFormulaSet {
+message FormulaScriptSet {
   ElectionId election_id = 1;
-  ElectoralFormula formula = 2;
+  bytes content_hash = 2;
+  string catalog_script_id = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
+message BsaPublicKeyAdded {
+  ElectionId election_id = 1;
+  BsaPublicKey key = 2;
   google.protobuf.Timestamp occurred_at = 3;
 }
 
@@ -121,17 +149,27 @@ message ElectionScheduled {
   google.protobuf.Timestamp occurred_at = 3;
 }
 
+message ElectionStateTransitioned {
+  ElectionId election_id = 1;
+  ElectionState from_state = 2;
+  ElectionState to_state = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+}
+
 message ElectionPublished {
   ElectionId election_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
 }
 
 message ElectionRegistryEvent {
+  EventCursor cursor = 1;
   oneof event {
-    ElectionCreated election_created = 1;
-    BallotTemplateDefined ballot_template_defined = 2;
-    ElectoralFormulaSet electoral_formula_set = 3;
-    ElectionScheduled election_scheduled = 4;
-    ElectionPublished election_published = 5;
+    ElectionCreated election_created = 2;
+    BallotTemplateDefined ballot_template_defined = 3;
+    FormulaScriptSet formula_script_set = 4;
+    BsaPublicKeyAdded bsa_public_key_added = 5;
+    ElectionScheduled election_scheduled = 6;
+    ElectionStateTransitioned election_state_transitioned = 7;
+    ElectionPublished election_published = 8;
   }
 }

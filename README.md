@@ -4,7 +4,7 @@
 
 Suffragio is a proposal for a modern, open, and verifiable electoral system. It specifies an e-voting protocol built around blind-signature ballots, a public append-only vote log, and a decentralized [Freenet](https://freenet.org) network overlay, so that any citizen can independently verify an election's outcome without having to trust a single government or vendor.
 
-This repository holds the specification: the [motivation & requirements](https://suffragio.github.io/suffragio-spec/motivation/), the [system architecture](https://suffragio.github.io/suffragio-spec/architecture/), the canonical [gRPC protocol definitions](proto/), and the rendered [Starlight](https://starlight.astro.build) documentation site itself.
+This repository holds the specification: the [motivation & requirements](https://suffragio.github.io/suffragio-spec/motivation/), the [system architecture](https://suffragio.github.io/suffragio-spec/architecture/), the normative [Protocol v1](https://suffragio.github.io/suffragio-spec/protocol-v1/) (implementer-facing), the canonical [gRPC protocol definitions](proto/), and the rendered [Starlight](https://starlight.astro.build) documentation site itself.
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 

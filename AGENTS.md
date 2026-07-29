@@ -8,7 +8,18 @@ astro dev --background
 
 Manage the background server with `astro dev stop`, `astro dev status`, and `astro dev logs`.
 
-## Documentation
+## Suffragio specification (this repo)
+
+When implementing or changing the electoral protocol/backend, treat these as source of truth:
+
+1. **Normative behaviour:** `src/content/docs/protocol-v1.md` (PL: `src/content/docs/pl/protocol-v1.md`)
+2. **Wire protocol:** `proto/suffragio/v1/*.proto`
+3. **Human API tables:** `src/content/docs/api-reference.md`
+4. **Architecture overview:** `src/content/docs/architecture.md`
+
+If docs conflict, **protocol-v1.md wins** for v1 behaviour.
+
+## Documentation (Astro/Starlight)
 
 Full documentation: https://docs.astro.build
 
